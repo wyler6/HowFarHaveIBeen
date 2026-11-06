@@ -117,3 +117,7 @@ GitHub Actions runs the tests, packages the addon with
    repository secret (Settings > Secrets and variables > Actions).
 
 The release workflow fails early, with a clear message, if either the project id or the token is missing.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
