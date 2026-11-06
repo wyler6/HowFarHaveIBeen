@@ -1,0 +1,103 @@
+name: Release to CurseForge
+
+# Tagging is the trigger, e.g.:  git tag v1.1.0 && git push origin v1.1.0
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test before releasing
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install lupa
+        run: python -m pip install --quiet lupa
+
+      - name: Run the test suite
+        run: python tests/run_tests.py
+
+  release:
+    name: Package and upload
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      # Full history and tags: the packager derives the version from the tag and
+      # builds the changelog from the commits since the previous one.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Without a project id the packager still succeeds but uploads nothing,
+      # which would look like a good release while shipping absolutely nowhere.
+      # Fail loudly instead.
+      - name: Require a CurseForge project id
+        run: |
+          if ! grep -qE '^## X-Curse-Project-ID:[[:space:]]*[0-9]+' HowFarHaveIBeen.toc; then
+            echo "::error::HowFarHaveIBeen.toc is missing '## X-Curse-Project-ID: <id>'."
+            echo "Create the project on CurseForge, copy the Project ID out of the"
+            echo "'About Project' box on its page, and add that line to the .toc."
+            exit 1
+          fi
+
+      # packager@v2 reads CF_API_KEY and ONLY that name -- the CF_API_TOKEN
+      # fallback exists on master but not on the v2 tag. Pass the wrong name and
+      # cf_token stays empty, upload_curseforge() hits its `return 0`, and the
+      # run goes green having uploaded nothing. So assert on the name the
+      # packager actually reads, and prove the token works before packaging
+      # rather than discovering it is stale halfway through an upload.
+      - name: Require a working CurseForge API key
+        env:
+          CF_API_KEY: ${{ secrets.CF_API_TOKEN }}
+        run: |
+          if [ -z "$CF_API_KEY" ]; then
+            echo "::error::Repository secret CF_API_TOKEN is not set."
+            echo "Create a token at https://authors.curseforge.com/#/settings/api-tokens"
+            echo "then add it under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          code=$(curl -sS -o /dev/null -w '%{http_code}' \
+                   -H "x-api-token: $CF_API_KEY" \
+                   https://wow.curseforge.com/api/game/versions)
+          if [ "$code" != "200" ]; then
+            echo "::error::CurseForge rejected the API token (HTTP $code)."
+            echo "It is probably expired or revoked. Generate a new one at"
+            echo "https://authors.curseforge.com/#/settings/api-tokens"
+            exit 1
+          fi
+          echo "CurseForge accepted the API token."
+
+      # Interface 16001 in the .toc is detected by the packager as the 'forever' flavour
+      # (its toc_to_type maps 16??? to forever), so the WoW Forever game version is
+      # selected without pinning it here.
+      # Both names are passed so this keeps working if the pin moves past v2.
+      - name: Package and upload to CurseForge
+        uses: BigWigsMods/packager@v2
+        env:
+          CF_API_KEY: ${{ secrets.CF_API_TOKEN }}
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+
+      # No post-upload assertion here on purpose. The packager deletes its
+      # cf_result.json before returning (release.sh: `rm -f "$resultfile"`), so
+      # there is no artifact left to check, and a step cannot read the log of
+      # the step before it. The two guards above are enough because between them
+      # they cover every branch of upload_curseforge()'s skip condition:
+      #
+      #   [[ -n $skip_cf_upload || -z $slug || -z $cf_token || -z $project_site ]]
+      #
+      # skip_cf_upload is only set by -L, which we never pass; slug is the .toc
+      # project id, asserted above; cf_token is asserted present AND accepted by
+      # the live API above; project_site is a constant inside the packager. With
+      # all four ruled out the upload cannot be silently skipped.
+      #
+      # Confirm a release landed by looking for "Uploading ..." and "Success!"
+      # in the packager step's log, or on the project's Files page.

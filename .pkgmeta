@@ -1,0 +1,18 @@
+# Packaging config for BigWigsMods/packager.
+# The repo root IS the addon folder, so package-as names the folder inside the zip.
+package-as: HowFarHaveIBeen
+
+# No library externals to fetch, so skip the nolib variant.
+enable-nolib-creation: no
+
+manual-changelog: CHANGELOG.md
+
+# Development-only files that should not ship to users.
+ignore:
+  - .github
+  - tests
+  - tools
+  - .gitattributes
+  - .gitignore
+  - .pkgmeta
+  - curseforge-description.md

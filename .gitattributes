@@ -1,0 +1,4 @@
+# Keep the working tree LF so checkouts never rewrite files WoW may be loading.
+# WoW parses either. The repo lives outside the WoW directory and is deployed
+# with tools/deploy.ps1, but the pin keeps line endings consistent everywhere.
+* text=auto eol=lf

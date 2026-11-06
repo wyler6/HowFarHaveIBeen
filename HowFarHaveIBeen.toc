@@ -1,0 +1,10 @@
+## Interface: 16001
+## Title: How Far Have I Been
+## Notes: Tracks how far your character has walked, run, swum and ridden.
+## Author: wyler6
+## Version: 1.0.0
+## SavedVariables: HowFarHaveIBeenDB
+
+Core.lua
+UI.lua
+Options.lua
