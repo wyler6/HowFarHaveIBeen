@@ -108,7 +108,8 @@ Upload `art/curseforge-logo-400.png` as the CurseForge project logo. Only `Media
         git tag vX.Y.Z && git push origin vX.Y.Z
 
 GitHub Actions runs the tests, packages the addon with
-[BigWigsMods/packager](https://github.com/BigWigsMods/packager) and uploads it to CurseForge.
+[BigWigsMods/packager](https://github.com/BigWigsMods/packager), uploads it to CurseForge, and
+publishes a GitHub release for the tag with the same zip attached.
 
 ### One-time setup
 1. Create the project on CurseForge and copy its Project ID from the "About Project" box.

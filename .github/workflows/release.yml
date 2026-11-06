@@ -1,4 +1,4 @@
-name: Release to CurseForge
+name: Release to CurseForge and GitHub
 
 # Tagging is the trigger, e.g.:  git tag v1.1.0 && git push origin v1.1.0
 on:
@@ -6,8 +6,9 @@ on:
     tags:
       - 'v*'
 
+# write: the packager creates the GitHub release for the tag and attaches the zip.
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   test:
@@ -80,11 +81,15 @@ jobs:
       # (its toc_to_type maps 16??? to forever), so the WoW Forever game version is
       # selected without pinning it here.
       # Both names are passed so this keeps working if the pin moves past v2.
-      - name: Package and upload to CurseForge
+      # GITHUB_OAUTH makes the packager also publish a GitHub release for the tag,
+      # with the same zip and the CHANGELOG as its notes. The token is the one
+      # GitHub Actions provides automatically; no extra secret is needed.
+      - name: Package and upload to CurseForge and GitHub
         uses: BigWigsMods/packager@v2
         env:
           CF_API_KEY: ${{ secrets.CF_API_TOKEN }}
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
 
       # No post-upload assertion here on purpose. The packager deletes its
       # cf_result.json before returning (release.sh: `rm -f "$resultfile"`), so
@@ -100,4 +105,5 @@ jobs:
       # all four ruled out the upload cannot be silently skipped.
       #
       # Confirm a release landed by looking for "Uploading ..." and "Success!"
-      # in the packager step's log, or on the project's Files page.
+      # in the packager step's log, or on the project's Files page. The GitHub
+      # release appears under the repo's Releases with the zip attached.
