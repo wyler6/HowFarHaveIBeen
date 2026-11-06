@@ -5,6 +5,7 @@
 ## Version: 1.0.0
 ## SavedVariables: HowFarHaveIBeenDB
 ## IconTexture: Interface\AddOns\HowFarHaveIBeen\Media\icon
+## X-Curse-Project-ID: 1787516
 
 Core.lua
 UI.lua

@@ -1,76 +1,102 @@
 # How Far Have I Been
 
-*Because "are we there yet?" deserves a real answer.*
+**Ever wondered how far you've actually run across Azeroth?**
 
----
+How Far Have I Been keeps a running tally of every step your character takes, and marks each milestone with the level-up fanfare and a shout-out to your guild.
 
-**How Far Have I Been** keeps count of how far your character has travelled in Azeroth. Walk, run, swim, ride, even wander around as a ghost: every yard is tallied per character and shown in a small panel you can put anywhere on your screen.
-
-Built for **WoW Forever**.
+Made for **WoW Forever**.
 
 ---
 
 ## Features
 
-- Tracks **on-foot distance** (walked and ran) for every character
-- Separate totals for **swimming**, **mounted** and **ghost** travel
-- Ignores flight paths, boats and zeppelins, teleports and loading screens, so only your own travel counts
-- A **draggable panel** with a detailed tooltip: hover it for the full breakdown
-- Totals for **this session** and for **all of your characters**
-- **Milestones**: every N miles or km on foot, the level-up sound plays and a message goes to guild chat with your character's full Forever name (first name and surname)
-- Guild messages are held back during combat or chat lockdown and sent as soon as it ends
-- Choose miles, kilometres or yards
-- A full **options window**, no commands required
+### Every step counts
+- Tracks your distance **on foot**, split into **walked** and **ran**
+- Keeps separate totals for **swimming**, **riding**, and running back **as a ghost**
+- Shows totals for each character, for **this session**, and for **all your characters combined**
+- Displays distance in miles, kilometres or yards
+
+### Only *your* travel
+- Flight paths, boats and zeppelins don't count
+- Teleports, hearthstones, blinks and loading screens don't count
+- Running into a wall doesn't count, because distance comes from where you actually moved
+
+### Milestones
+- Every **5 miles** on foot, you hear the **level-up sound**. You can set any distance, in miles or kilometres.
+- Your guild sees a message like:
+  `Firstname Surname has travelled 10 miles on foot! (How Far Have I Been)`
+- Uses your **full Forever name**, first name and surname
+- Never interrupts a fight: guild messages wait until combat is over
+- Try it privately first with `/howfar milestone test`
+
+### Stays out of your way
+- A small panel you can drag anywhere, lock in place, or hide
+- Hover over it for the full breakdown; right-click it for options
+- Lightweight, with no libraries. Your totals are saved on your computer only.
 
 ---
 
-## How to use it
+## Getting started
 
-- **Move the panel:** left-click and drag (unless you have locked it)
-- **Open options:** right-click the panel, type `/howfar options`, or go to Esc > Options > AddOns > How Far Have I Been
-- **See the breakdown:** hover over the panel
-
----
-
-## Slash Commands
-
-Use `/howfar` or `/hfib`.
-
-| Command | Description |
-|---|---|
-| `/howfar` | Print a summary of your totals |
-| `/howfar show` / `hide` / `toggle` | Show or hide the panel |
-| `/howfar lock` / `unlock` | Stop or allow dragging the panel |
-| `/howfar units miles\|km\|yards` | Choose display units |
-| `/howfar milestone <n> [miles\|km]` | Announce every n miles or km and turn milestones on |
-| `/howfar milestone off` | Turn milestones off |
-| `/howfar milestone test` | Preview the sound and message locally (never posts to guild) |
-| `/howfar announce on\|off` | Turn the guild message on or off |
-| `/howfar sound on\|off` | Turn the milestone sound on or off |
-| `/howfar options` | Open or close the options window |
-| `/howfar reset confirm` | Erase this character's totals |
-| `/howfar help` | List all commands |
+1. Install the addon and log in. The panel appears near the top of your screen.
+2. Go for a run.
+3. Hover over the panel to see your totals, and right-click it to open the options.
 
 ---
 
-## How distance is measured
+## Options
 
-The addon checks your position several times a second and adds up the real distance you moved. Where the game hides your position (inside instances, for example) it works it out from your speed and the time that passed instead. Taxis, boats, teleports, loading screens and being a corpse never add to your total, and neither does standing still.
+Open the options window by right-clicking the panel, typing `/howfar options`, or going to **Esc > Options > AddOns > How Far Have I Been**.
 
----
-
-## Milestones
-
-Every time your on-foot distance (walked plus ran) passes a multiple of your chosen step, you get the level-up sound, a message in your chat, and, if you are in a guild and announcements are on, a guild message such as:
-
-`Firstname Surname has travelled 10 miles on foot! (How Far Have I Been)`
-
-The default is every 5 miles. Swimming, mounted and ghost distance never trigger a milestone.
+- **Display:** show or lock the panel, choose units, reset the panel's position
+- **Milestones:** turn them on or off, choose how often, guild message, sound, and a test button
+- **Data:** reset this character's totals (asks first)
 
 ---
 
-## Installation
+## Commands
 
-Install via the CurseForge app, or drop the `HowFarHaveIBeen` folder into your `_forever_/Interface/AddOns` directory and reload.
+Type `/howfar` or `/hfib`:
 
-Made for **WoW Forever** (interface 16001).
+- `/howfar`: a summary of your totals
+- `/howfar options`: open the options window
+- `/howfar show`, `hide`, `lock`, `unlock`: control the panel
+- `/howfar units miles`, `km` or `yards`: change units
+- `/howfar milestone 10`: a milestone every 10 miles (add `km` for kilometres)
+- `/howfar milestone off`: turn milestones off
+- `/howfar milestone test`: preview the sound and message (never posts to guild)
+- `/howfar announce on` or `off`: the guild message
+- `/howfar sound on` or `off`: the milestone sound
+- `/howfar reset confirm`: erase this character's totals
+- `/howfar help`: list every command
+
+---
+
+## How it measures
+
+Several times a second, the addon checks where you are and adds up the real distance you've moved. Inside dungeons and raids, where the game hides your position, it estimates distance from your movement speed instead.
+
+---
+
+## FAQ
+
+**Will it spam my guild?**
+No. At normal running speed a mile takes a little over 4 minutes, so the default of every 5 miles means at least 20 minutes of non-stop running between messages. You can make it less frequent, or turn guild messages off and keep just the sound.
+
+**Does riding count?**
+Yes. Riding is tracked as its own total, but only distance on foot counts toward milestones.
+
+**Does it work in dungeons?**
+Yes. Inside instances it estimates distance from your speed.
+
+**Will it know how far I went before installing it?**
+No. Tracking starts the moment you install it.
+
+**Does it work on Retail or Classic?**
+No. It's built for WoW Forever only.
+
+---
+
+## Feedback
+
+Found a bug or have an idea? Open an issue on [GitHub](https://github.com/wyler6/HowFarHaveIBeen/issues).
