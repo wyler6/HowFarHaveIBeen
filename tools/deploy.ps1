@@ -27,7 +27,7 @@ if (-not (Test-Path $WowAddOns)) {
 # nothing with no error to explain why.
 #
 # Everything else is fixed and matches the .pkgmeta ignore list, so tests/,
-# tools/ and .github/ never reach the game folder.
+# tools/, .github/ and art/ never reach the game folder.
 $toc = "HowFarHaveIBeen.toc"
 $luaFiles = Get-Content (Join-Path $repo $toc) |
     ForEach-Object { $_.Trim() } |
@@ -38,6 +38,7 @@ if (-not $luaFiles) {
 }
 
 $files = @($toc) + $luaFiles + @(
+    "Media\icon.tga",
     "README.md",
     "CHANGELOG.md"
 )

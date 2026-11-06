@@ -77,7 +77,7 @@ Offline, using Lua 5.1 via [lupa](https://pypi.org/project/lupa/) and a mocked W
 in the order listed in the `.toc`, so a file added there is picked up automatically.
 
     python -m venv venv
-    venv\Scriptsctivate        (Linux/macOS: source venv/bin/activate)
+    venv\Scripts\activate        (Linux/macOS: source venv/bin/activate)
     pip install lupa
     python tests/run_tests.py
 
@@ -91,6 +91,14 @@ Copies the `.toc`, the Lua files it lists, `README.md` and `CHANGELOG.md` to
     pwsh tools/deploy.ps1 -WowAddOns "D:\Games\WoW\_forever_\Interface\AddOns"
 
 Then `/reload` in game.
+
+### Icon
+The source is `art/logo.png`. To regenerate the in-game icon (`Media/icon.tga`) and the CurseForge logo:
+
+    pip install Pillow numpy
+    python tools/gen_icons.py
+
+Upload `art/curseforge-logo-400.png` as the CurseForge project logo. Only `Media/icon.tga` ships; `art/` is ignored by `.pkgmeta`.
 
 ### Releasing
 1. Bump `## Version` in `HowFarHaveIBeen.toc`.

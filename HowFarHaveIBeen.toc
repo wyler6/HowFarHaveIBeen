@@ -4,6 +4,7 @@
 ## Author: wyler6
 ## Version: 1.0.0
 ## SavedVariables: HowFarHaveIBeenDB
+## IconTexture: Interface\AddOns\HowFarHaveIBeen\Media\icon
 
 Core.lua
 UI.lua
