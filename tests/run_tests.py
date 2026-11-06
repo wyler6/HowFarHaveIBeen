@@ -492,7 +492,7 @@ def t_ms1_cross_guild_sound_chat():
     assert len(s) == 1, s
     msg, kind = s[0]
     assert kind == "GUILD" and "5 miles" in msg and "Tester" in msg and "-Forever" not in msg, s
-    assert msg == "Tester has travelled 5 miles on foot! (How Far Have I Been)", msg
+    assert msg == "Tester has travelled 5 miles on foot!", msg
     assert "|" not in msg and len(msg) < 255
     assert sounds(e) == [(888, "Master")], sounds(e)
     assert any("Milestone!" in m and "5 miles" in m for m in e.chat()), e.chat()
@@ -974,14 +974,14 @@ def t_nm1_guild_message_full_name():
     e = surname_env("Ashvale")
     s = sent(e)
     assert len(s) == 1, s
-    assert s[0][0] == "Tester Ashvale has travelled 5 miles on foot! (How Far Have I Been)", s
+    assert s[0][0] == "Tester Ashvale has travelled 5 miles on foot!", s
     assert any("Milestone! You've travelled 5 miles on foot." in m for m in e.chat()), e.chat()
 
 
 def t_nm2_no_surname():
     for sn in (None, ""):
         e = surname_env(sn)
-        assert sent(e)[0][0] == "Tester has travelled 5 miles on foot! (How Far Have I Been)", sent(e)
+        assert sent(e)[0][0] == "Tester has travelled 5 miles on foot!", sent(e)
 
 
 def t_nm3_secret_surname():
@@ -991,7 +991,7 @@ def t_nm3_secret_surname():
 
 def t_nm4_no_doubled_surname():
     e = surname_env("Ashvale", name="Tester Ashvale")
-    assert sent(e)[0][0] == "Tester Ashvale has travelled 5 miles on foot! (How Far Have I Been)", sent(e)
+    assert sent(e)[0][0] == "Tester Ashvale has travelled 5 miles on foot!", sent(e)
 
 
 def t_nm5_separator_constant():

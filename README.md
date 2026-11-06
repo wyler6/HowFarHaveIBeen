@@ -47,7 +47,7 @@ Whenever this character's on-foot distance (walked + ran) crosses a multiple of 
 1. plays the level-up sound (also in combat),
 2. prints "Milestone! You've travelled 10 miles on foot." to your chat,
 3. if guild announcements are on and you are in a guild, says to guild chat:
-   `<First Last> has travelled 10 miles on foot! (How Far Have I Been)`.
+   `<First Last> has travelled 10 miles on foot!`.
 
 The default is every 5 miles. Swimming, riding and ghost distance never trigger a milestone, and loading your saved
 data never does either. Guild chat is not sent during combat or while chat messaging is locked down; the message is

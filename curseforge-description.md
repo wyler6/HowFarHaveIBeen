@@ -24,7 +24,7 @@ Made for **WoW Forever**.
 ### Milestones
 - Every **5 miles** on foot, you hear the **level-up sound**. You can set any distance, in miles or kilometres.
 - Your guild sees a message like:
-  `Firstname Surname has travelled 10 miles on foot! (How Far Have I Been)`
+  `Firstname Surname has travelled 10 miles on foot!`
 - Uses your **full Forever name**, first name and surname
 - Never interrupts a fight: guild messages wait until combat is over
 - Try it privately first with `/howfar milestone test`

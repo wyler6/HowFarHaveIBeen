@@ -366,7 +366,7 @@ local function announce(amount, unit, localOnly)
     if localOnly or s.milestoneSound ~= false then playMilestoneSound() end
     ns.Print("Milestone! You've travelled " .. text .. " on foot.")
     if not localOnly and s.announceGuild ~= false and flag("IsInGuild") then
-        local msg = ns.PlayerFullName() .. " has travelled " .. text .. " on foot! (How Far Have I Been)"
+        local msg = ns.PlayerFullName() .. " has travelled " .. text .. " on foot!"
         if #msg < 255 then sendGuild(msg) end
     end
 end
