@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.1
+
+- **Shorter guild announcement.** Milestone messages now end at "on foot!" without the
+  "(How Far Have I Been)" suffix.
+- **Added the MIT license** to the download.
+
 ## 1.0.0
 
 First release.
