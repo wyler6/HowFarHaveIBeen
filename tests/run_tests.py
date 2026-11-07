@@ -1044,6 +1044,125 @@ def t_nm9_no_surname_keeps_old_key():
     assert chars["Tester-Forever"].run == 500 and e.ns.char.run == 500
 
 
+# ---------------------------------------------------------------- progressive milestones
+MI = 1760
+
+
+def t_pg1_schedule():
+    e = Env()
+    exp = [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 200, 300, 400, 500, 600, 700,
+           800, 900, 1000, 2000, 3000]
+    v, got = 0, []
+    for _ in exp:
+        v = e.ns.ProgressiveNext(v)
+        got.append(v)
+    assert got == exp, got
+    f = e.ns.ProgressiveFloor
+    assert f(0.5) is None and f(0) is None
+    for v, want in ((1, 1), (4.99, 4), (5, 5), (9.99, 5), (10, 10), (99.9, 90), (100, 100),
+                    (150, 100), (1000, 1000)):
+        assert f(v) == want, (v, f(v), want)
+
+
+def t_pg2_running_fires_on_schedule():
+    e = ms_env(preload=MI - 10, cmds=["milestone progressive"])
+    assert any("Milestones: progressive (1-5, then 10, 20 ... 100, 200 ...) in miles." in m for m in e.chat()), e.chat()
+    e.run_line(3, 7)
+    assert [m for m, _ in sent(e)] == ["Tester has travelled 1 mile on foot!"], sent(e)
+    for k in (2, 3, 4, 5):
+        e.ns.char["run"] = k * MI - 10
+        e.run_line(3, 7)
+    assert [m for m, _ in sent(e)][1:] == ["Tester has travelled %d miles on foot!" % k for k in (2, 3, 4, 5)], sent(e)
+    n = len(sent(e))
+    e.ns.char["run"] = 5 * MI + 100
+    e.run_line(10, 7)  # well past 5, nowhere near 10
+    assert len(sent(e)) == n
+    e.ns.char["run"] = 10 * MI - 10
+    e.run_line(3, 7)
+    assert sent(e)[-1][0] == "Tester has travelled 10 miles on foot!" and len(sent(e)) == n + 1, sent(e)
+    e.ns.char["run"] = 20 * MI - 10
+    e.run_line(3, 7)
+    assert sent(e)[-1][0] == "Tester has travelled 20 miles on foot!" and len(sent(e)) == n + 2, sent(e)
+
+
+def t_pg3_switching_is_not_retroactive():
+    e = ms_env(preload=7.3 * MI)
+    e.slash("milestone progressive")
+    assert sent(e) == [] and sounds(e) == []
+    text = e.ns.NextMilestoneText()
+    assert text == "Next milestone: 10 miles (2.70 to go)", text
+    e.run_line(3, 7)
+    assert sent(e) == []
+
+
+def t_pg4_km():
+    km = 1000 / 0.9144
+    e = ms_env(preload=3 * km - 10, cmds=["milestone progressive km"])
+    assert any("in km." in m for m in e.chat()), e.chat()
+    assert settings_of(e).milestoneUnit == "km"
+    e.run_line(3, 7)
+    assert [m for m, _ in sent(e)] == ["Tester has travelled 3 km on foot!"], sent(e)
+    assert e.ns.NextMilestoneText().startswith("Next milestone: 4 km (")
+
+
+def t_pg5_slash_and_repair():
+    e = Env()
+    s = settings_of(e)
+    assert s.milestoneMode == "fixed"
+    e.slash("milestone off")
+    e.slash("milestone progressive")
+    assert s.milestoneMode == "progressive" and s.milestonesOn is True and s.milestoneUnit == "miles"
+    e.slash("milestone progressive km")
+    assert s.milestoneMode == "progressive" and s.milestoneUnit == "km"
+    n = len(e.chat())
+    e.slash("milestone progressive furlongs")
+    assert any("Usage" in m and "progressive" in m for m in e.chat()[n:])
+    assert s.milestoneUnit == "km"
+    e.slash("milestone 5")
+    assert s.milestoneMode == "fixed" and s.milestoneStep == 5 and s.milestoneUnit == "miles"
+    e.slash("help")
+    assert any("progressive" in m for m in e.chat())
+    for bad in ('"bogus"', "5", "nil"):
+        e.G.HowFarHaveIBeenDB = e.L.eval('{settings={milestoneMode=%s}}' % bad)
+        e.fire("ADDON_LOADED", ADDON)
+        assert settings_of(e).milestoneMode == "fixed", bad
+
+
+def t_pg6_test_posts_nothing():
+    e = ms_env(preload=7.3 * MI, cmds=["milestone progressive"])
+    e.slash("milestone test")
+    assert sent(e) == [] and len(sounds(e)) == 1
+    assert any("Milestone!" in m and "10 miles" in m for m in e.chat()), e.chat()
+    e.ns.char = None
+    n = len(e.chat())
+    e.ns.MilestoneTest()
+    assert any("1 mile" in m for m in e.chat()[n:]), e.chat()[n:]
+    assert sent(e) == []
+
+
+def t_pg7_options_mode():
+    e = opened()
+    w = widgets(e)
+    s = settings_of(e)
+    assert is_checked(w.modeFixed) and not is_checked(w.modeProgressive) and is_enabled(w.step)
+    click(w.modeProgressive)
+    assert s.milestoneMode == "progressive"
+    assert is_checked(w.modeProgressive) and not is_checked(w.modeFixed)
+    assert not is_enabled(w.step) and is_enabled(w.modeFixed) and is_enabled(w.stepKm)
+    assert w.nextText.GetText(w.nextText).startswith("Next milestone: 1 mile")
+    click(w.milestonesOn)
+    assert not is_enabled(w.modeProgressive) and not is_enabled(w.step)
+    click(w.milestonesOn)
+    assert not is_enabled(w.step) and is_enabled(w.modeProgressive)
+    click(w.modeFixed)
+    assert s.milestoneMode == "fixed" and is_enabled(w.step)
+    assert w.nextText.GetText(w.nextText).startswith("Next milestone: 5 miles")
+    e.slash("milestone progressive")
+    e.slash("options")
+    e.slash("options")
+    assert is_checked(w.modeProgressive) and not is_enabled(w.step)
+
+
 TESTS = [(n[2:], f) for n, f in sorted(globals().items()) if n.startswith("t_") and callable(f)]
 
 

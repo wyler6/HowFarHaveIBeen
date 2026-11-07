@@ -16,7 +16,7 @@ ns.Options = O
 local W = O.widgets
 
 local frame
-local unitGroup, stepGroup = {}, {}
+local unitGroup, stepGroup, modeGroup = {}, {}, {}
 local subControls = {}      -- { control, label } greyed out while milestones are off
 
 local function settings() return ns.GetSettings() or {} end
@@ -102,8 +102,10 @@ end
 local function setControlEnabled(control, label, on)
     -- Guarded: Enable/Disable on an InputBoxTemplate edit box is unconfirmed on
     -- Forever, and a missing method must not break the whole window.
-    local method = on and control.Enable or control.Disable
-    if type(method) == "function" then method(control) end
+    if control then -- nil for a label-only entry such as "Unit:"
+        local method = on and control.Enable or control.Disable
+        if type(method) == "function" then method(control) end
+    end
     if label then
         if on then label:SetTextColor(1, 1, 1) else label:SetTextColor(0.5, 0.5, 0.5) end
     end
@@ -115,6 +117,10 @@ local function applyMilestoneEnabled(on)
     end
     -- Take focus out of the box when it is greyed out.
     if not on and W.step then W.step:ClearFocus() end
+    -- The step box only applies to the fixed schedule.
+    if W.step and W.modeFixed then
+        setControlEnabled(W.step, nil, on and settings().milestoneMode ~= "progressive")
+    end
 end
 
 ------------------------------------------------------------------------
@@ -148,6 +154,7 @@ local function refresh()
     selectInGroup(unitGroup, (s.units == "km" and W.unitKm) or (s.units == "yards" and W.unitYards) or W.unitMiles)
     W.milestonesOn:SetChecked(s.milestonesOn and true or false)
     W.step:SetText(stepText())
+    selectInGroup(modeGroup, (s.milestoneMode == "progressive") and W.modeProgressive or W.modeFixed)
     selectInGroup(stepGroup, (s.milestoneUnit == "km") and W.stepKm or W.stepMiles)
     W.announceGuild:SetChecked(s.announceGuild ~= false)
     W.sound:SetChecked(s.milestoneSound ~= false)
@@ -162,7 +169,7 @@ local function build()
     if frame then return end
     frame = CreateFrame("Frame", WINDOW_NAME, UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
     O.frame = frame
-    frame:SetSize(340, 440)
+    frame:SetSize(340, 492)
     frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     frame:SetFrameStrata("DIALOG")
     frame:SetClampedToScreen(true)
@@ -228,10 +235,19 @@ local function build()
         applyMilestoneEnabled(on)
         W.nextText:SetText(ns.NextMilestoneText())
     end)
-    local everyLabel = makeLabel("Every", "GameFontHighlight", 38, -238)
+    local function pickMode(m)
+        return function()
+            settings().milestoneMode = m
+            applyMilestoneEnabled(settings().milestonesOn and true or false)
+            W.nextText:SetText(ns.NextMilestoneText())
+        end
+    end
+    local rFixed, lFixed = makeRadio(modeGroup, "Every", 36, -233, pickMode("fixed"))
+    local rProg, lProg = makeRadio(modeGroup, "Progressive (1-5, 10, 20...100, 200...)", 36, -259, pickMode("progressive"))
+    W.modeFixed, W.modeProgressive = rFixed, rProg
     local box = CreateFrame("EditBox", nil, frame, "InputBoxTemplate")
     box:SetSize(50, 20)
-    box:SetPoint("TOPLEFT", frame, "TOPLEFT", 82, -235)
+    box:SetPoint("TOPLEFT", frame, "TOPLEFT", 106, -235)
     box:SetAutoFocus(false)
     box:SetMaxLetters(8)
     box:SetScript("OnEnterPressed", function(self) applyStepBox(); self:ClearFocus() end)
@@ -241,32 +257,34 @@ local function build()
     local function pickStepUnit(u)
         return function() settings().milestoneUnit = u end
     end
-    local rMiles, lMiles = makeRadio(stepGroup, "miles", 142, -233, pickStepUnit("miles"))
-    local rKm, lKm = makeRadio(stepGroup, "km", 212, -233, pickStepUnit("km"))
+    local unitLabel = makeLabel("Unit:", "GameFontHighlight", 40, -290)
+    local rMiles, lMiles = makeRadio(stepGroup, "miles", 86, -285, pickStepUnit("miles"))
+    local rKm, lKm = makeRadio(stepGroup, "km", 156, -285, pickStepUnit("km"))
     W.stepMiles, W.stepKm = rMiles, rKm
-    local gBtn, gLbl = makeCheckbox("Post in guild chat", 36, -262, function(on)
+    local gBtn, gLbl = makeCheckbox("Post in guild chat", 36, -314, function(on)
         settings().announceGuild = on
     end)
     W.announceGuild = gBtn
-    local sBtn, sLbl = makeCheckbox("Play level-up sound", 36, -288, function(on)
+    local sBtn, sLbl = makeCheckbox("Play level-up sound", 36, -340, function(on)
         settings().milestoneSound = on
     end)
     W.sound = sBtn
-    W.test = makeButton("Test milestone", 40, -320, 130, function() ns.MilestoneTest() end)
+    W.test = makeButton("Test milestone", 40, -372, 130, function() ns.MilestoneTest() end)
     local nextFs = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-    nextFs:SetPoint("TOPLEFT", frame, "TOPLEFT", 20, -350)
+    nextFs:SetPoint("TOPLEFT", frame, "TOPLEFT", 20, -402)
     nextFs:SetWidth(300)
     nextFs:SetJustifyH("LEFT")
     W.nextText = nextFs
 
     subControls = {
-        { box, everyLabel }, { rMiles, lMiles }, { rKm, lKm },
+        { box, nil }, { rFixed, lFixed }, { rProg, lProg },
+        { nil, unitLabel }, { rMiles, lMiles }, { rKm, lKm },
         { gBtn, gLbl }, { sBtn, sLbl }, { W.test, nil },
     }
 
     -- Data
-    makeLabel("Data", "GameFontNormal", 16, -384)
-    W.resetTotals = makeButton("Reset this character's totals...", 20, -404, 230, function()
+    makeLabel("Data", "GameFontNormal", 16, -436)
+    W.resetTotals = makeButton("Reset this character's totals...", 20, -456, 230, function()
         if StaticPopup_Show then StaticPopup_Show(POPUP) end
     end)
 

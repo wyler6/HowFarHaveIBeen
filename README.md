@@ -16,6 +16,7 @@ Install it from CurseForge, or copy the addon files (`HowFarHaveIBeen.toc` and t
 | `lock` / `unlock` | Prevent or allow dragging |
 | `units miles\|km\|yards` | Display units |
 | `milestone <n> [miles\|km]` | Announce every n miles/km on foot and turn milestones on (default 5 miles; unit defaults to your display unit if miles or km) |
+| `milestone progressive [miles\|km]` | Progressive milestones: every 1 up to 5, then 10, 20 ... 100, 200 ... 1000, 2000 ... in the chosen unit |
 | `milestone off` | Turn milestones off (the step is remembered) |
 | `milestone test` | Play the sound and print the local line; never posts to guild |
 | `announce on\|off` | Turn the guild message on or off |
@@ -35,7 +36,7 @@ changes show up too.
 
 - **Display:** show or hide the panel, lock its position, choose Miles / Kilometres / Yards, and reset the panel to its
   default position.
-- **Milestones:** switch milestones on or off, set how often (a number above 0 in miles or km; press Enter or click away
+- **Milestones:** switch milestones on or off, set how often (**Every** a number above 0, or **Progressive**, in miles or km; press Enter or click away
   to apply, invalid input is reverted), post in guild chat, play the level-up sound, a **Test milestone** button (sound
   and local message only, never guild), and a live "next milestone" line. The milestone options are greyed out while
   milestones are off.
@@ -49,7 +50,7 @@ Whenever this character's on-foot distance (walked + ran) crosses a multiple of 
 3. if guild announcements are on and you are in a guild, says to guild chat:
    `<First Last> has travelled 10 miles on foot!`.
 
-The default is every 5 miles. Swimming, riding and ghost distance never trigger a milestone, and loading your saved
+The default is every 5 miles. Choose **progressive** (`/howfar milestone progressive` or the Options window) to get milestones every 1 up to 5, then 10, 20 ... 100, then every 100 up to 1000, and so on; switching modes never fires a milestone retroactively. Swimming, riding and ghost distance never trigger a milestone, and loading your saved
 data never does either. Guild chat is not sent during combat or while chat messaging is locked down; the message is
 queued and sent once, when combat ends or the lockdown lifts (retried every 5 s). `/howfar milestone test` plays the
 sound and prints the local line but never posts to guild.

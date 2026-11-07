@@ -24,6 +24,7 @@ local DEFAULT_SETTINGS = {
     milestonesOn = true,       -- master switch; the step is kept while off
     milestoneStep = 5,         -- number of miles/km between milestones (> 0)
     milestoneUnit = "miles",   -- "miles" or "km"
+    milestoneMode = "fixed",   -- "fixed" (every step) or "progressive" (1-5, 10, 20 ... 100, 200 ...)
     announceGuild = true,
     milestoneSound = true,
 }
@@ -100,6 +101,9 @@ local function initDB()
     if st.milestoneStep ~= nil and not (type(st.milestoneStep) == "number" and st.milestoneStep > 0) then
         st.milestonesOn = false
         st.milestoneStep = 5
+    end
+    if st.milestoneMode ~= "fixed" and st.milestoneMode ~= "progressive" then
+        st.milestoneMode = "fixed"
     end
     mergeDefaults(db.settings, DEFAULT_SETTINGS)
     if type(db.chars) ~= "table" then db.chars = {} end
@@ -375,10 +379,38 @@ function ns.OnMilestone(amount, unit)
     announce(amount, unit == "km" and "km" or "miles", false)
 end
 
+-- Progressive schedule: every 1 up to 5, then 10, then every 10 up to 100,
+-- every 100 up to 1000, and so on. Largest milestone <= v, or nil when v < 1.
+function ns.ProgressiveFloor(v)
+    if v < 1 then return nil end
+    if v < 5 then return math.floor(v) end
+    if v < 10 then return 5 end
+    local p = 10
+    while v >= p * 10 do p = p * 10 end
+    return math.floor(v / p) * p
+end
+
+-- Smallest progressive milestone > v.
+function ns.ProgressiveNext(v)
+    if v < 5 then return math.floor(v) + 1 end
+    if v < 10 then return 10 end
+    local p = 10
+    while v >= p * 10 do p = p * 10 end
+    return (math.floor(v / p) + 1) * p
+end
+
 local function checkMilestone(dist)
     local s = ns.GetSettings()
     if not (s and ns.char) then return end
     if not s.milestonesOn then return end
+    if s.milestoneMode == "progressive" then
+        local unit = (s.milestoneUnit == "km") and "km" or "miles"
+        local y = stepYards(1, unit)
+        local after = ns.OnFoot(ns.char)
+        local fa = ns.ProgressiveFloor(after / y)
+        if fa and fa ~= ns.ProgressiveFloor((after - dist) / y) then ns.OnMilestone(fa, unit) end
+        return
+    end
     local step = s.milestoneStep
     if not (isNumber(step) and step > 0) then return end
     local unit = (s.milestoneUnit == "km") and "km" or "miles"
@@ -471,6 +503,14 @@ function ns.NextMilestoneText()
     local c = ns.char
     local step = st and st.milestoneStep
     if not (st and st.milestonesOn) then return "Milestones: off" end
+    if st.milestoneMode == "progressive" then
+        if not c then return "Milestones: not ready yet" end
+        local unit = (st.milestoneUnit == "km") and "km" or "miles"
+        local y = stepYards(1, unit)
+        local units = ns.OnFoot(c) / y
+        local nxt = ns.ProgressiveNext(units)
+        return string.format("Next milestone: %s (%.2f to go)", amountText(nxt, unit), nxt - units)
+    end
     if not (c and isNumber(step) and step > 0) then return "Milestones: not ready yet" end
     local unit = (st.milestoneUnit == "km") and "km" or "miles"
     local y = stepYards(step, unit)
@@ -484,6 +524,11 @@ end
 function ns.MilestoneTest()
     local settings = ns.GetSettings() or {}
     local step = isNumber(settings.milestoneStep) and settings.milestoneStep > 0 and settings.milestoneStep or 5
+    if settings.milestoneMode == "progressive" then
+        local unit = settings.milestoneUnit == "km" and "km" or "miles"
+        step = 1
+        if ns.char then step = ns.ProgressiveNext(ns.OnFoot(ns.char) / stepYards(1, unit)) end
+    end
     announce(step, settings.milestoneUnit == "km" and "km" or "miles", true)
     ns.Print("Test mode: guild messages are skipped.")
 end
@@ -502,7 +547,7 @@ local function printHelp()
     ns.Print("  show | hide | toggle - the on-screen panel")
     ns.Print("  lock | unlock - allow or prevent dragging the panel")
     ns.Print("  units miles|km|yards - change display units")
-    ns.Print("  milestone <n> [miles|km] | off | test - announce every n miles/km on foot")
+    ns.Print("  milestone <n> [miles|km] | progressive [miles|km] | off | test - announce every n miles/km on foot (or 1-5, 10, 20 ... 100, 200 ...)")
     ns.Print("  options | config - open the options window")
     ns.Print("  announce on|off - guild message at each milestone")
     ns.Print("  sound on|off - milestone sound")
@@ -602,6 +647,17 @@ local function handleSlash(msg)
             ns.Print("Milestones off.")
         elseif arg == "test" then
             ns.MilestoneTest()
+        elseif arg:match("^progressive") then
+            local unit = arg:match("^progressive%s*(%S*)$")
+            if unit == "" then unit = (settings.units == "km") and "km" or "miles" end
+            if unit == "miles" or unit == "km" then
+                settings.milestoneMode = "progressive"
+                settings.milestoneUnit = unit
+                settings.milestonesOn = true
+                ns.Print("Milestones: progressive (1-5, then 10, 20 ... 100, 200 ...) in " .. unit .. ".")
+            else
+                ns.Print("Usage: /howfar milestone <n> [miles|km] | progressive [miles|km] | off | test")
+            end
         else
             local numText, unitArg = arg:match("^(%S+)%s*(%S*)$")
             local n = tonumber(numText or "")
@@ -610,10 +666,11 @@ local function handleSlash(msg)
             if n and n > 0 and n < 1e6 and (unit == "miles" or unit == "km") then
                 settings.milestoneStep = n
                 settings.milestoneUnit = unit
+                settings.milestoneMode = "fixed"
                 settings.milestonesOn = true
                 ns.Print("Milestones every " .. amountText(n, unit) .. ".")
             else
-                ns.Print("Usage: /howfar milestone <n> [miles|km] | off | test")
+                ns.Print("Usage: /howfar milestone <n> [miles|km] | progressive [miles|km] | off | test")
             end
         end
     elseif cmd == "announce" or cmd == "sound" then

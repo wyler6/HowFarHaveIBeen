@@ -22,7 +22,7 @@ Made for **WoW Forever**.
 - Running into a wall doesn't count, because distance comes from where you actually moved
 
 ### Milestones
-- Every **5 miles** on foot, you hear the **level-up sound**. You can set any distance, in miles or kilometres.
+- Every **5 miles** on foot, you hear the **level-up sound**. You can set any distance, in miles or kilometres, or choose **progressive** milestones: every mile up to 5, then 10, 20 ... 100, 200 ... so early trips get frequent cheers and long hauls stay rare.
 - Your guild sees a message like:
   `Firstname Surname has travelled 10 miles on foot!`
 - Uses your **full Forever name**, first name and surname
@@ -49,7 +49,7 @@ Made for **WoW Forever**.
 Open the options window by right-clicking the panel, typing `/howfar options`, or going to **Esc > Options > AddOns > How Far Have I Been**.
 
 - **Display:** show or lock the panel, choose units, reset the panel's position
-- **Milestones:** turn them on or off, choose how often, guild message, sound, and a test button
+- **Milestones:** turn them on or off, choose how often (a fixed distance or progressive), guild message, sound, and a test button
 - **Data:** reset this character's totals (asks first)
 
 ---
@@ -63,6 +63,7 @@ Type `/howfar` or `/hfib`:
 - `/howfar show`, `hide`, `lock`, `unlock`: control the panel
 - `/howfar units miles`, `km` or `yards`: change units
 - `/howfar milestone 10`: a milestone every 10 miles (add `km` for kilometres)
+- `/howfar milestone progressive`: milestones at 1-5, then 10, 20 ... 100, 200 ... (add `km` for kilometres)
 - `/howfar milestone off`: turn milestones off
 - `/howfar milestone test`: preview the sound and message (never posts to guild)
 - `/howfar announce on` or `off`: the guild message

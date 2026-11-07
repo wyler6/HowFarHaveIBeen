@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **Progressive milestones.** New option (Options window or `/howfar milestone progressive`):
+  milestones at 1-5, then 10, 20 ... 100, 200 ... in miles or km, instead of a fixed step.
+
 ## 1.0.1
 
 - **Shorter guild announcement.** Milestone messages now end at "on foot!" without the
