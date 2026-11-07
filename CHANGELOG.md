@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.1.0
 
 - **Progressive milestones.** New option (Options window or `/howfar milestone progressive`):
   milestones at 1-5, then 10, 20 ... 100, 200 ... in miles or km, instead of a fixed step.
