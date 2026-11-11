@@ -1,7 +1,7 @@
 # How Far Have I Been
 
 A World of Warcraft addon for **WoW Forever** (patch 1.60.1, interface 16001) that measures how far your
-character has travelled, split into walked, ran, swam, rode and "as a ghost". Totals are saved per character
+character has travelled, split into walked, ran, swam, rode and "as a ghost" (plus glided, for Skyborne characters). Totals are saved per character
 (in yards) and shown in a small draggable panel, a tooltip, and via slash command.
 
 ## Install
@@ -11,7 +11,7 @@ Install it from CurseForge, or copy the addon files (`HowFarHaveIBeen.toc` and t
 ## Commands (`/howfar` or `/hfib`)
 | Command | Effect |
 |---|---|
-| (none) | Summary: on-foot total (walked/ran), swam, rode, ghost, this session, all characters, next milestone |
+| (none) | Summary: on-foot total (walked/ran), swam, glided (Skyborne only), rode, ghost, this session, all characters, next milestone |
 | `show` / `hide` / `toggle` | Show or hide the panel |
 | `lock` / `unlock` | Prevent or allow dragging |
 | `units miles\|km\|yards` | Display units |
@@ -50,7 +50,7 @@ Whenever this character's on-foot distance (walked + ran) crosses a multiple of 
 3. if guild announcements are on and you are in a guild, says to guild chat:
    `<First Last> has travelled 10 miles on foot!`.
 
-The default is every 5 miles. Choose **progressive** (`/howfar milestone progressive` or the Options window) to get milestones every 1 up to 5, then 10, 20 ... 100, then every 100 up to 1000, and so on; switching modes never fires a milestone retroactively. Swimming, riding and ghost distance never trigger a milestone, and loading your saved
+The default is every 5 miles. Choose **progressive** (`/howfar milestone progressive` or the Options window) to get milestones every 1 up to 5, then 10, 20 ... 100, then every 100 up to 1000, and so on; switching modes never fires a milestone retroactively. Swimming, gliding (Skyborne), riding and ghost distance never trigger a milestone, and loading your saved
 data never does either. Guild chat is not sent during combat or while chat messaging is locked down; the message is
 queued and sent once, when combat ends or the lockdown lifts (retried every 5 s). `/howfar milestone test` plays the
 sound and prints the local line but never posts to guild.

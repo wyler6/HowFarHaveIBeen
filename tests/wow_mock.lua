@@ -11,7 +11,8 @@ MOCK = {
   mapWorldSize = { 4000, 2600 },
   speed = 0,
   secretSpeed = false,
-  mounted = false, swimming = false, flying = false,
+  mounted = false, swimming = false, flying = false, falling = false,
+  race = { "Human", "Human", 1 },   -- UnitRace returns these (raceName, raceFile, raceID)
   taxi = false, dead = false, ghost = false, inCombat = false,
   chat = {},
   frames = {},
@@ -171,6 +172,8 @@ function UnitIsGhost() return MOCK.ghost end
 function IsSwimming() return MOCK.swimming end
 function IsMounted() return MOCK.mounted end
 function IsFlying() return MOCK.flying end
+function IsFalling() return MOCK.falling end
+function UnitRace() return MOCK.race[1], MOCK.race[2], MOCK.race[3] end
 function IsInGuild() return MOCK.inGuild end
 
 SOUNDKIT = { LEVEL_UP = 888 }

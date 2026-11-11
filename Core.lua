@@ -13,7 +13,7 @@ local MAX_PLAUSIBLE_SPEED = 40    -- yd/s; sanity ceiling when our own speed is 
 local WALK_THRESHOLD = 4.0        -- on-foot speeds below this count as "walking"
 local PREFIX = "|cff33ccffHowFar:|r"
 
-local CATEGORIES = { "walk", "run", "swim", "mount", "ghost" }
+local CATEGORIES = { "walk", "run", "swim", "glide", "mount", "ghost" }
 
 local GUILD_RETRY_INTERVAL = 5     -- seconds between attempts to flush queued guild messages
 local YARDS_PER_MILE = 1760
@@ -29,7 +29,7 @@ local DEFAULT_SETTINGS = {
     milestoneSound = true,
 }
 
-ns.session = { walk = 0, run = 0, swim = 0, mount = 0, ghost = 0 }
+ns.session = { walk = 0, run = 0, swim = 0, glide = 0, mount = 0, ghost = 0 }
 ns.lastMethod = "none"
 ns.methodYards = { position = 0, speed = 0 } -- session only, not saved
 
@@ -198,7 +198,7 @@ function ns.GetCharTotals() return ns.char end
 function ns.GetSessionTotals() return ns.session end
 
 function ns.GetAccountTotals()
-    local sum = { walk = 0, run = 0, swim = 0, mount = 0, ghost = 0 }
+    local sum = { walk = 0, run = 0, swim = 0, glide = 0, mount = 0, ghost = 0 }
     local chars = HowFarHaveIBeenDB and HowFarHaveIBeenDB.chars
     if chars then
         for _, entry in pairs(chars) do
@@ -300,10 +300,22 @@ local function excluded()
     return flag("UnitIsDead", "player") and not flag("UnitIsGhost", "player")
 end
 
-local function category(speed)
+-- True when the player is Skyborne (the race that can glide). Unknown (API
+-- missing, erroring or secret values) counts as false.
+function ns.CanGlide()
+    if type(UnitRace) ~= "function" then return false end
+    local ok, _, raceFile, raceID = pcall(UnitRace, "player")
+    if not ok then return false end
+    if usable(raceFile) and type(raceFile) == "string" and raceFile == "Skyborne" then return true end
+    if usable(raceID) and type(raceID) == "number" and (raceID == 95 or raceID == 96) then return true end
+    return false
+end
+
+local function category(speed, glide)
     if flag("UnitIsGhost", "player") then return "ghost" end
     if flag("IsSwimming") then return "swim" end
     if flag("IsMounted") or flag("IsFlying") then return "mount" end
+    if glide then return "glide" end
     if speed ~= nil and speed < WALK_THRESHOLD then return "walk" end
     return "run"
 end
@@ -424,11 +436,14 @@ end
 -- Tracking
 ------------------------------------------------------------------------
 local lastTime, base, prevSpeed
+local groundSpeed, prevGliding -- glide detection: last speed while not falling (nil: assume normal run speed); was the previous sample a glide
 
 function ns.ResetBaseline()
     lastTime = GetTime and GetTime() or 0
     base = nil
     prevSpeed = nil
+    groundSpeed = nil
+    prevGliding = false
 end
 
 function ns.ProcessSample(now)
@@ -436,9 +451,17 @@ function ns.ProcessSample(now)
     lastTime = now
     -- Loading screens and lag spikes produce huge or non-positive gaps.
     if dt <= 0 or dt > MAX_DT then base = nil; return end
-    if excluded() then base = nil; prevSpeed = 0; return end
+    if excluded() then base = nil; prevSpeed = 0; prevGliding = false; return end
 
     local speed = readSpeed()
+    -- Gliding (Skyborne): the client reports it as falling at a speed well above
+    -- the ground speed (a plain jump keeps the ground speed).
+    local falling = flag("IsFalling")
+    if not falling and speed ~= nil then groundSpeed = speed end
+    local gliding = falling and speed ~= nil and speed > (groundSpeed or 7) + 1 and ns.CanGlide()
+    -- The sample right after a glide ends still covers glided distance.
+    local glideCat = gliding or (prevGliding and not falling)
+    prevGliding = gliding and true or false
     -- Standing still (or on a boat/zeppelin, where our own speed is 0): don't read position.
     if speed == 0 and prevSpeed == 0 then base = nil; return end
 
@@ -480,7 +503,7 @@ function ns.ProcessSample(now)
         if ns.methodYards and ns.methodYards[method] ~= nil then
             ns.methodYards[method] = ns.methodYards[method] + dist
         end
-        local cat = category(movingSpeed)
+        local cat = category(movingSpeed, glideCat)
         if ns.char then ns.char[cat] = ns.char[cat] + dist end
         ns.session[cat] = ns.session[cat] + dist
         if cat == "walk" or cat == "run" then checkMilestone(dist) end
@@ -561,7 +584,11 @@ local function printSummary()
     if c then
         ns.Print(string.format("%s on foot: %s (walked %s, ran %s)", ns.PlayerFullName(),
             f(ns.OnFoot(c)), f(c.walk), f(c.run)))
-        ns.Print(string.format("Swam %s, rode %s, as a ghost %s", f(c.swim), f(c.mount), f(c.ghost)))
+        if ns.CanGlide() then
+            ns.Print(string.format("Swam %s, glided %s, rode %s, as a ghost %s", f(c.swim), f(c.glide), f(c.mount), f(c.ghost)))
+        else
+            ns.Print(string.format("Swam %s, rode %s, as a ghost %s", f(c.swim), f(c.mount), f(c.ghost)))
+        end
     end
     ns.Print("This session on foot: " .. f(ns.OnFoot(s)))
     ns.Print("All characters on foot: " .. f(ns.OnFoot(a)))
@@ -609,6 +636,9 @@ local function printDebug()
         or (src == "map" and "map coordinates")
         or "none (speed estimate only)"
     ns.Print("Position source right now: " .. srcText)
+    ns.Print("Glide: can glide " .. (ns.CanGlide() and "yes" or "no")
+        .. ", gliding now " .. (prevGliding and "yes" or "no")
+        .. ", ground speed " .. (groundSpeed and string.format("%.1f", groundSpeed) or "n/a"))
     local my = ns.methodYards or {}
     ns.Print("This session: " .. ns.Format(my.position or 0, "yards") .. " by position, "
         .. ns.Format(my.speed or 0, "yards") .. " by speed estimate")
@@ -715,7 +745,7 @@ frame:SetScript("OnEvent", function(_, event, arg1)
     elseif event == "PLAYER_LOGIN" then
         initDB() -- harmless if already done; protects against odd load order
         initChar()
-        ns.session = { walk = 0, run = 0, swim = 0, mount = 0, ghost = 0 }
+        ns.session = { walk = 0, run = 0, swim = 0, glide = 0, mount = 0, ghost = 0 }
         ns.methodYards = { position = 0, speed = 0 }
         ns.ResetBaseline()
         uiCall("UI_Init")

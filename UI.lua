@@ -51,12 +51,19 @@ local function showTooltip(owner)
     GameTooltip:AddDoubleLine("Walked", f(c.walk or 0), 1, 1, 1, 1, 1, 1)
     GameTooltip:AddDoubleLine("Ran", f(c.run or 0), 1, 1, 1, 1, 1, 1)
     GameTooltip:AddDoubleLine("Swam", f(c.swim or 0), 1, 1, 1, 1, 1, 1)
+    if ns.CanGlide() then
+        GameTooltip:AddDoubleLine("Glided", f(c.glide or 0), 1, 1, 1, 1, 1, 1)
+    end
     GameTooltip:AddDoubleLine("Rode", f(c.mount or 0), 1, 1, 1, 1, 1, 1)
     GameTooltip:AddDoubleLine("As a ghost", f(c.ghost or 0), 1, 1, 1, 1, 1, 1)
     GameTooltip:AddDoubleLine("Total (this character)", f(ns.Total(c)), 1, 1, 1, 1, 1, 1)
     GameTooltip:AddLine(" ")
     GameTooltip:AddDoubleLine("This session", f(ns.Total(ns.GetSessionTotals())), 1, 1, 1, 1, 1, 1)
-    GameTooltip:AddDoubleLine("All characters (on foot)", f(ns.OnFoot(ns.GetAccountTotals())), 1, 1, 1, 1, 1, 1)
+    local acct = ns.GetAccountTotals()
+    GameTooltip:AddDoubleLine("All characters (on foot)", f(ns.OnFoot(acct)), 1, 1, 1, 1, 1, 1)
+    if (acct.glide or 0) > 0 then
+        GameTooltip:AddDoubleLine("All characters (glided)", f(acct.glide), 1, 1, 1, 1, 1, 1)
+    end
     if c.firstSeen then
         GameTooltip:AddLine("Tracking since " .. date("%b %d, %Y", c.firstSeen), 0.7, 0.7, 0.7)
     end

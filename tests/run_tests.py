@@ -113,11 +113,11 @@ class Env:
 
     def totals(self):
         c = self.ns.char
-        return {k: c[k] for k in ("walk", "run", "swim", "mount", "ghost")}
+        return {k: c[k] for k in ("walk", "run", "swim", "glide", "mount", "ghost")}
 
     def session(self):
         s = self.ns.GetSessionTotals()
-        return {k: s[k] for k in ("walk", "run", "swim", "mount", "ghost")}
+        return {k: s[k] for k in ("walk", "run", "swim", "glide", "mount", "ghost")}
 
     def slash(self, text):
         self.G.SlashCmdList["HOWFAR"](text)
@@ -1161,6 +1161,171 @@ def t_pg7_options_mode():
     e.slash("options")
     e.slash("options")
     assert is_checked(w.modeProgressive) and not is_enabled(w.step)
+
+
+# ---------------------------------------------------------------- gliding (Skyborne)
+def race_setup(race_file, race_id, name="Skyborne"):
+    def setup(env):
+        env.MOCK.race = env.L.eval('{"%s", "%s", %d}' % (name, race_file, race_id))
+    return setup
+
+
+def glide_env(race_file="Skyborne", race_id=94):
+    return Env(setup=race_setup(race_file, race_id))
+
+
+def glide_from_run(e):
+    e.run_line(3, 7)
+    e.MOCK.falling = True
+    e.run_line(3, 15)
+
+
+def t_gl1_skyborne_by_race_file():
+    e = glide_env("Skyborne", 94)
+    assert e.ns.CanGlide() is True
+    e.run_line(3, 7)
+    run_before = e.totals()["run"]
+    e.MOCK.falling = True
+    e.run_line(3, 15)
+    approx(e.totals()["glide"], 45, 4, "glide")
+    approx(e.totals()["run"], run_before, 0.001, "run unchanged by glide")
+    approx(e.session()["glide"], 45, 4, "session glide")
+
+
+def t_gl2_skyborne_by_race_id():
+    for rid in (95, 96):
+        e = glide_env("SomethingElse", rid)
+        assert e.ns.CanGlide() is True, rid
+        glide_from_run(e)
+        approx(e.totals()["glide"], 45, 4, "glide %d" % rid)
+        assert e.totals()["run"] < 30, e.totals()
+
+
+def t_gl3_glide_does_not_fire_milestones():
+    for cmds in ((), ("milestone progressive",)):
+        e = Env(setup=race_setup("Skyborne", 94))
+        for c in cmds:
+            e.slash(c)
+        e.ns.char["run"] = FIVE_MI - 10 if not cmds else MI - 10
+        e.MOCK.falling = True
+        e.run_line(5, 15)
+        assert e.totals()["glide"] > 50
+        assert sent(e) == [] and sounds(e) == [], (sent(e), sounds(e))
+        assert not any("Milestone!" in m for m in e.chat())
+        approx(e.ns.OnFoot(e.ns.char), (FIVE_MI - 10) if not cmds else (MI - 10), 0.001, "on foot")
+
+
+def t_gl4_jump_while_running_stays_run():
+    e = glide_env()
+    e.run_line(3, 7)
+    e.MOCK.falling = True
+    e.run_line(2, 7)  # jumping: falling but the ground speed is kept
+    e.MOCK.falling = False
+    e.run_line(2, 7)
+    only(e, "run", 49, 3)
+
+
+def t_gl5_glide_from_standstill():
+    e = glide_env()
+    e.MOCK.speed = 0
+    for _ in range(10):
+        e.step()
+    e.MOCK.falling = True
+    e.run_line(3, 15)
+    approx(e.totals()["glide"], 45, 4, "glide")
+    assert e.totals()["run"] == 0 and e.totals()["walk"] == 0, e.totals()
+
+
+def t_gl6_landing_sample_is_glide():
+    e = glide_env()
+    e.MOCK.falling = True
+    e.run_line(1.1, 15)  # ends between samples, leaving distance in flight
+    e.MOCK.falling = False
+    e.MOCK.speed = 0
+    for _ in range(20):
+        e.step()
+    only(e, "glide", 16.5, 2)
+    e.run_line(2, 7)  # back on the ground: run again
+    assert e.totals()["run"] > 10
+
+
+def t_gl7_human_never_glides():
+    e = Env()
+    assert e.ns.CanGlide() is False
+    e.run_line(3, 7)
+    e.MOCK.falling = True
+    e.run_line(3, 15)
+    assert e.totals()["glide"] == 0
+    approx(e.totals()["run"], 66, 4, "run")
+
+
+def t_gl8_secret_race():
+    def setup(env):
+        env.MOCK.race = env.L.eval('{MOCK.SECRET, MOCK.SECRET, MOCK.SECRET}')
+    e = Env(setup=setup)
+    assert e.ns.CanGlide() is False
+    glide_from_run(e)
+    assert e.totals()["glide"] == 0
+    e.slash("debug")
+    e.slash("")
+    e.G.HowFarHaveIBeenFrame._scripts.OnEnter(e.G.HowFarHaveIBeenFrame)
+    # a secret id with a readable non-Skyborne file, and a missing UnitRace, also stay false
+    e2 = Env(setup=lambda env: setattr(env.MOCK, "race", env.L.eval('{"Human", "Human", MOCK.SECRET}')))
+    assert e2.ns.CanGlide() is False
+    e3 = Env(setup=lambda env: env.L.execute("UnitRace = nil"))
+    assert e3.ns.CanGlide() is False
+    e3.slash("debug")
+
+
+def t_gl9_old_data_and_reset():
+    e = Env(start=False)
+    e.G.HowFarHaveIBeenDB = e.L.eval(
+        '{version=1, settings={}, chars={["Tester-Forever"]={walk=1,run=2,swim=3,mount=4,ghost=5,firstSeen=5}}}')
+    e.fire("ADDON_LOADED", ADDON)
+    e.fire("PLAYER_LOGIN")
+    assert e.ns.char.glide == 0
+    assert e.ns.GetAccountTotals().glide == 0
+    assert e.ns.GetSessionTotals().glide == 0
+    e.ns.char.glide = 50
+    approx(e.ns.GetAccountTotals().glide, 50, 0.001, "account glide")
+    assert e.ns.Total(e.ns.char) == 1 + 2 + 3 + 4 + 5 + 50
+    e.ns.ResetCharTotals()
+    assert e.ns.char.glide == 0 and e.G.HowFarHaveIBeenDB.chars["Tester-Forever"].glide == 0
+
+
+def tooltip_for(e):
+    e.G.HowFarHaveIBeenFrame._scripts.OnEnter(e.G.HowFarHaveIBeenFrame)
+    return e.tooltip()
+
+
+def t_gl10_tooltip_summary_debug():
+    sky = glide_env()
+    tip = tooltip_for(sky)
+    assert any(l.startswith("Glided\t") for l in tip), tip
+    assert tip.index([l for l in tip if l.startswith("Glided\t")][0]) == tip.index([l for l in tip if l.startswith("Swam\t")][0]) + 1
+    assert not any(l.startswith("All characters (glided)") for l in tip), tip
+    sky.slash("")
+    assert any("glided" in m for m in sky.chat()), sky.chat()
+    sky.slash("debug")
+    assert any("Glide: can glide yes" in m for m in sky.chat()), sky.chat()
+    glide_from_run(sky)
+    tip = tooltip_for(sky)
+    assert any(l.startswith("All characters (glided)") for l in tip), tip
+    human = Env()
+    glide_from_run(human)
+    tip = tooltip_for(human)
+    assert not any("Glided" in l or "glided" in l for l in tip), tip
+    human.slash("")
+    assert not any("glided" in m for m in human.chat())
+    assert any(m.endswith("Swam 0.00 mi, rode 0.00 mi, as a ghost 0.00 mi") for m in human.chat()), human.chat()
+    human.slash("debug")
+    assert any("Glide: can glide no" in m for m in human.chat()), human.chat()
+    # a Human on an account with glide data from another character sees the combined line, not "Glided"
+    human.ns.char.glide = 0
+    human.G.HowFarHaveIBeenDB.chars["Other-Forever"] = human.L.eval('{walk=0,run=0,swim=0,glide=99,mount=0,ghost=0}')
+    tip = tooltip_for(human)
+    assert any(l.startswith("All characters (glided)") for l in tip), tip
+    assert not any(l.startswith("Glided\t") for l in tip), tip
 
 
 TESTS = [(n[2:], f) for n, f in sorted(globals().items()) if n.startswith("t_") and callable(f)]

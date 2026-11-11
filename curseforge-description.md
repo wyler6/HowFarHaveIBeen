@@ -13,6 +13,7 @@ Made for **WoW Forever**.
 ### Every step counts
 - Tracks your distance **on foot**, split into **walked** and **ran**
 - Keeps separate totals for **swimming**, **riding**, and running back **as a ghost**
+- Skyborne characters also get a separate **gliding** total, which never counts toward milestones
 - Shows totals for each character, for **this session**, and for **all your characters combined**
 - Displays distance in miles, kilometres or yards
 

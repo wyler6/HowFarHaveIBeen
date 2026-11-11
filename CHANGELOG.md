@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **Skyborne glide total.** Gliding is now tracked as its own distance (shown as "Glided" for
+  Skyborne characters) and no longer counts as running or toward milestones.
+
 ## 1.1.0
 
 - **Progressive milestones.** New option (Options window or `/howfar milestone progressive`):
