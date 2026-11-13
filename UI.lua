@@ -111,12 +111,15 @@ function ns.UI_Init()
 
     line1 = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     line1:SetPoint("TOPLEFT", 8, -7)
+    -- The Session line and the speed share one font and one top edge, so they
+    -- sit on the same baseline; the speed also uses the Session line's grey.
     line2 = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    line2:SetPoint("TOPLEFT", line1, "BOTTOMLEFT", 0, -3)
+    line2:SetPoint("TOPLEFT", panel, "TOPLEFT", 8, -23)
 
-    speedText = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    speedText:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -8, 7)
+    speedText = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    speedText:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -8, -23)
     speedText:SetJustifyH("RIGHT")
+    speedText:SetTextColor(0.667, 0.667, 0.667) -- same as dim() (|cffaaaaaa)
     ns.UI_SpeedText = speedText
 
     -- Restore saved position, or use the default.
