@@ -98,7 +98,7 @@ function frameMethods.GetPoint(self)
 end
 function frameMethods.SetBackdrop(self) end
 function frameMethods.CreateFontString(self)
-  local fs = setmetatable({ _text = "" }, frameMT)
+  local fs = setmetatable({ _text = "", _shown = true, _scripts = {} }, frameMT)
   fs.SetText = function(s, t) s._text = t end
   fs.GetText = function(s) return s._text end
   MOCK.fontStrings[#MOCK.fontStrings + 1] = fs

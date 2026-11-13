@@ -27,7 +27,12 @@ local DEFAULT_SETTINGS = {
     milestoneMode = "fixed",   -- "fixed" (every step) or "progressive" (1-5, 10, 20 ... 100, 200 ...)
     announceGuild = true,
     milestoneSound = true,
+    showSpeed = true,          -- current movement speed in the panel's bottom-right corner
+    speedFormat = "percent",   -- "percent", "yards", "mph" or "kmh"
 }
+
+local SPEED_FORMATS = { percent = true, yards = true, mph = true, kmh = true }
+local NORMAL_RUN_SPEED = 7            -- yd/s, shown as 100%
 
 ns.session = { walk = 0, run = 0, swim = 0, glide = 0, mount = 0, ghost = 0 }
 ns.lastMethod = "none"
@@ -105,6 +110,8 @@ local function initDB()
     if st.milestoneMode ~= "fixed" and st.milestoneMode ~= "progressive" then
         st.milestoneMode = "fixed"
     end
+    if type(st.showSpeed) ~= "boolean" then st.showSpeed = true end
+    if not SPEED_FORMATS[st.speedFormat] then st.speedFormat = "percent" end
     mergeDefaults(db.settings, DEFAULT_SETTINGS)
     if type(db.chars) ~= "table" then db.chars = {} end
 end
@@ -253,6 +260,22 @@ local function readSpeed()
     local ok, speed = pcall(GetUnitSpeed, "player")
     if ok and usable(speed) and type(speed) == "number" then return speed end
     return nil
+end
+
+function ns.ReadSpeed() return readSpeed() end
+
+-- Speed text for the panel: percent of normal run speed, yd/s, mph or km/h.
+-- nil (unavailable or secret) shows "--".
+function ns.FormatSpeed(yps, fmt)
+    if yps == nil then return "--" end
+    if fmt == "yards" then
+        return string.format("%.1f yd/s", yps)
+    elseif fmt == "mph" then
+        return string.format("%.1f mph", yps * 3600 / YARDS_PER_MILE)
+    elseif fmt == "kmh" then
+        return string.format("%.1f km/h", yps * METERS_PER_YARD * 3.6)
+    end
+    return math.floor(yps / NORMAL_RUN_SPEED * 100 + 0.5) .. "%"
 end
 
 local function isNumber(v) return usable(v) and type(v) == "number" end
@@ -571,6 +594,7 @@ local function printHelp()
     ns.Print("  lock | unlock - allow or prevent dragging the panel")
     ns.Print("  units miles|km|yards - change display units")
     ns.Print("  milestone <n> [miles|km] | progressive [miles|km] | off | test - announce every n miles/km on foot (or 1-5, 10, 20 ... 100, 200 ...)")
+    ns.Print("  speed on|off|percent|yards|mph|kmh - current speed on the panel, and its format")
     ns.Print("  options | config - open the options window")
     ns.Print("  announce on|off - guild message at each milestone")
     ns.Print("  sound on|off - milestone sound")
@@ -671,6 +695,21 @@ local function handleSlash(msg)
         else
             ns.Print("Usage: /howfar units miles|km|yards")
         end
+    elseif cmd == "speed" then
+        if arg == "on" or arg == "off" then
+            settings.showSpeed = (arg == "on")
+            ns.Print(settings.showSpeed and ("Speed display on (" .. tostring(settings.speedFormat) .. ").")
+                or "Speed display off.")
+        elseif SPEED_FORMATS[arg] then
+            settings.speedFormat = arg
+            settings.showSpeed = true
+            ns.Print("Speed display on (" .. arg .. ").")
+        else
+            ns.Print("Usage: /howfar speed on|off|percent|yards|mph|kmh")
+            return
+        end
+        uiCall("UI_Refresh")
+        uiCall("Options_Refresh")
     elseif cmd == "milestone" then
         if arg == "off" then
             settings.milestonesOn = false -- the step is kept

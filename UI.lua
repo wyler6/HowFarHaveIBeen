@@ -5,19 +5,33 @@
 local addonName, ns = ...
 
 local REFRESH_INTERVAL = 1.0
+local SPEED_INTERVAL = 0.2
 local SOURCE_TEXT = { UnitPosition = "Position (UnitPosition)", map = "Position (map)" }
 
-local panel, line1, line2
+local panel, line1, line2, speedText
 
 local function settings() return ns.GetSettings() or {} end
 
 local function dim(text) return "|cffaaaaaa" .. text .. "|r" end
+
+-- Current speed in the bottom-right corner; hidden when switched off.
+function ns.UI_RefreshSpeed()
+    if not speedText then return end
+    local s = settings()
+    if s.showSpeed == false then
+        speedText:Hide()
+        return
+    end
+    speedText:SetText(ns.FormatSpeed(ns.ReadSpeed(), s.speedFormat))
+    speedText:Show()
+end
 
 function ns.UI_Refresh()
     if not panel then return end
     local f = ns.Format
     line1:SetText("On foot: " .. f(ns.OnFoot(ns.GetCharTotals())))
     line2:SetText(dim("Session: " .. f(ns.OnFoot(ns.GetSessionTotals()))))
+    ns.UI_RefreshSpeed()
 end
 
 local function applyPosition()
@@ -100,6 +114,11 @@ function ns.UI_Init()
     line2 = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     line2:SetPoint("TOPLEFT", line1, "BOTTOMLEFT", 0, -3)
 
+    speedText = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    speedText:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -8, 7)
+    speedText:SetJustifyH("RIGHT")
+    ns.UI_SpeedText = speedText
+
     -- Restore saved position, or use the default.
     applyPosition()
 
@@ -121,8 +140,13 @@ function ns.UI_Init()
     panel:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     -- Refresh about once per second rather than every frame.
-    local acc = 0
+    local acc, speedAcc = 0, 0
     panel:SetScript("OnUpdate", function(_, elapsed)
+        speedAcc = speedAcc + elapsed
+        if speedAcc >= SPEED_INTERVAL then
+            speedAcc = 0
+            ns.UI_RefreshSpeed()
+        end
         acc = acc + elapsed
         if acc >= REFRESH_INTERVAL then
             acc = 0

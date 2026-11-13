@@ -1328,6 +1328,155 @@ def t_gl10_tooltip_summary_debug():
     assert not any(l.startswith("Glided\t") for l in tip), tip
 
 
+# ---------------------------------------------------------------- speed readout
+
+def speed_text(e):
+    fs = e.ns.UI_SpeedText
+    return fs._text, fs._shown
+
+
+def t_sp1_format_speed():
+    e = Env()
+    f = e.ns.FormatSpeed
+    assert f(7, "percent") == "100%", f(7, "percent")
+    assert f(7, "yards") == "7.0 yd/s", f(7, "yards")
+    assert f(7, "mph") == "14.3 mph", f(7, "mph")
+    assert f(7, "kmh") == "23.0 km/h", f(7, "kmh")
+    assert f(15, "percent") == "214%", f(15, "percent")
+    assert f(0, "percent") == "0%", f(0, "percent")
+    assert f(None, "percent") == "--" and f(None, "mph") == "--"
+    assert f(7, "furlongs") == "100%" and f(7, None) == "100%"
+
+
+def t_sp2_defaults_and_repair():
+    e = Env()
+    s = settings_of(e)
+    assert s.showSpeed is True and s.speedFormat == "percent"
+    for bad_show in ('"yes"', "1", "nil"):
+        e.G.HowFarHaveIBeenDB = e.L.eval('{settings={showSpeed=%s}}' % bad_show)
+        e.fire("ADDON_LOADED", ADDON)
+        assert settings_of(e).showSpeed is True, bad_show
+    e.G.HowFarHaveIBeenDB = e.L.eval('{settings={showSpeed=false}}')
+    e.fire("ADDON_LOADED", ADDON)
+    assert settings_of(e).showSpeed is False
+    for bad in ('"bogus"', "5", "nil"):
+        e.G.HowFarHaveIBeenDB = e.L.eval('{settings={speedFormat=%s}}' % bad)
+        e.fire("ADDON_LOADED", ADDON)
+        assert settings_of(e).speedFormat == "percent", bad
+    e.G.HowFarHaveIBeenDB = e.L.eval('{settings={speedFormat="kmh"}}')
+    e.fire("ADDON_LOADED", ADDON)
+    assert settings_of(e).speedFormat == "kmh"
+
+
+def t_sp3_panel_speed_text():
+    e = Env()
+    assert e.ns.ReadSpeed() == 0
+    e.MOCK.speed = 7
+    e.run_line(0.3, 7)
+    assert speed_text(e) == ("100%", True), speed_text(e)
+    e.MOCK.speed = 14
+    e.step(0.25)  # more than the 0.2 s speed interval
+    assert speed_text(e)[0] == "200%", speed_text(e)
+    settings_of(e).speedFormat = "yards"
+    e.step(0.25)
+    assert speed_text(e)[0] == "14.0 yd/s", speed_text(e)
+
+
+def t_sp4_secret_speed_shows_dashes():
+    e = Env()
+    e.MOCK.secretSpeed = True
+    for _ in range(10):
+        e.step(0.25)
+    assert e.ns.ReadSpeed() is None
+    assert speed_text(e) == ("--", True), speed_text(e)
+    e.ns.UI_Refresh()
+    assert speed_text(e)[0] == "--"
+
+
+def t_sp5_hidden_when_off():
+    e = Env()
+    e.slash("speed off")
+    assert settings_of(e).showSpeed is False and speed_text(e)[1] is False
+    e.MOCK.speed = 7
+    e.step(0.3)
+    assert speed_text(e)[1] is False
+    e.slash("speed on")
+    assert speed_text(e) == ("100%", True), speed_text(e)
+
+
+def t_sp6_slash():
+    e = Env()
+    s = settings_of(e)
+    e.slash("speed off")
+    assert s.showSpeed is False and any("Speed display off." in m for m in e.chat())
+    e.slash("speed on")
+    assert s.showSpeed is True and any("Speed display on (percent)." in m for m in e.chat())
+    e.slash("speed off")
+    for word in ("yards", "mph", "kmh", "percent"):
+        s.showSpeed = False
+        e.slash("speed " + word)
+        assert s.speedFormat == word and s.showSpeed is True, word
+        assert any(("Speed display on (%s)." % word) in m for m in e.chat())
+    e.MOCK.speed = 7
+    e.slash("speed mph")
+    assert speed_text(e)[0] == "14.3 mph", speed_text(e)
+    n = len(e.chat())
+    e.slash("speed")
+    e.slash("speed bogus")
+    usage = [m for m in e.chat()[n:] if "Usage: /howfar speed on|off|percent|yards|mph|kmh" in m]
+    assert len(usage) == 2, e.chat()[n:]
+    assert s.speedFormat == "mph" and s.showSpeed is True
+    n = len(e.chat())
+    e.slash("help")
+    assert any("speed" in m and "kmh" in m for m in e.chat()[n:])
+
+
+def t_sp7_options_window():
+    e = opened()
+    w = widgets(e)
+    s = settings_of(e)
+    assert is_checked(w.showSpeed) and is_checked(w.speedPercent)
+    for r in (w.speedPercent, w.speedYards, w.speedMph, w.speedKmh):
+        assert is_enabled(r)
+    e.MOCK.speed = 7
+    click(w.speedKmh)
+    assert s.speedFormat == "kmh" and is_checked(w.speedKmh) and not is_checked(w.speedPercent)
+    assert speed_text(e)[0] == "23.0 km/h", speed_text(e)
+    click(w.speedYards)
+    assert s.speedFormat == "yards" and is_checked(w.speedYards) and not is_checked(w.speedKmh)
+    click(w.speedMph)
+    assert s.speedFormat == "mph" and speed_text(e)[0] == "14.3 mph"
+    click(w.speedPercent)
+    assert s.speedFormat == "percent" and speed_text(e)[0] == "100%"
+    click(w.showSpeed)
+    assert s.showSpeed is False and speed_text(e)[1] is False
+    for r in (w.speedPercent, w.speedYards, w.speedMph, w.speedKmh):
+        assert not is_enabled(r)
+    click(w.speedKmh)  # disabled radios ignore clicks
+    assert s.speedFormat == "percent"
+    click(w.showSpeed)
+    assert s.showSpeed is True and speed_text(e)[1] is True
+    assert all(is_enabled(r) for r in (w.speedPercent, w.speedYards, w.speedMph, w.speedKmh))
+
+
+def t_sp8_options_refresh_from_settings():
+    e = Env()
+    e.slash("speed mph")
+    e.slash("options")
+    w = widgets(e)
+    assert is_checked(w.showSpeed) and is_checked(w.speedMph) and not is_checked(w.speedPercent)
+    # A slash change while the window is open updates it at once.
+    e.slash("speed kmh")
+    assert is_checked(w.speedKmh) and not is_checked(w.speedMph)
+    e.slash("speed off")
+    assert not is_checked(w.showSpeed) and not is_enabled(w.speedKmh)
+    # Changes made while hidden show up on the next open.
+    e.slash("options")
+    e.slash("speed yards")
+    e.slash("options")
+    assert is_checked(w.showSpeed) and is_checked(w.speedYards) and is_enabled(w.speedYards)
+
+
 TESTS = [(n[2:], f) for n, f in sorted(globals().items()) if n.startswith("t_") and callable(f)]
 
 

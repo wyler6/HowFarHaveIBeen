@@ -2,7 +2,7 @@
 
 A World of Warcraft addon for **WoW Forever** (patch 1.60.1, interface 16001) that measures how far your
 character has travelled, split into walked, ran, swam, rode and "as a ghost" (plus glided, for Skyborne characters). Totals are saved per character
-(in yards) and shown in a small draggable panel, a tooltip, and via slash command.
+(in yards) and shown in a small draggable panel (with your current speed in the corner), a tooltip, and via slash command.
 
 ## Install
 Install it from CurseForge, or copy the addon files (`HowFarHaveIBeen.toc` and the `.lua` files) into a folder named
@@ -15,6 +15,7 @@ Install it from CurseForge, or copy the addon files (`HowFarHaveIBeen.toc` and t
 | `show` / `hide` / `toggle` | Show or hide the panel |
 | `lock` / `unlock` | Prevent or allow dragging |
 | `units miles\|km\|yards` | Display units |
+| `speed on\|off\|percent\|yards\|mph\|kmh` | Show or hide the current speed on the panel, or pick its format (a format also turns it on; percent is relative to normal run speed, 7 yd/s = 100%) |
 | `milestone <n> [miles\|km]` | Announce every n miles/km on foot and turn milestones on (default 5 miles; unit defaults to your display unit if miles or km) |
 | `milestone progressive [miles\|km]` | Progressive milestones: every 1 up to 5, then 10, 20 ... 100, 200 ... 1000, 2000 ... in the chosen unit |
 | `milestone off` | Turn milestones off (the step is remembered) |
@@ -34,7 +35,7 @@ Open it with right-click on the panel, `/howfar options` (or `/howfar config`, `
 Every change takes effect immediately, and the window re-reads your settings each time it opens, so slash-command
 changes show up too.
 
-- **Display:** show or hide the panel, lock its position, choose Miles / Kilometres / Yards, and reset the panel to its
+- **Display:** show or hide the panel, lock its position, choose Miles / Kilometres / Yards, show the current speed in the panel's bottom-right corner (as %, yd/s, mph or km/h), and reset the panel to its
   default position.
 - **Milestones:** switch milestones on or off, set how often (**Every** a number above 0, or **Progressive**, in miles or km; press Enter or click away
   to apply, invalid input is reverted), post in guild chat, play the level-up sound, a **Test milestone** button (sound

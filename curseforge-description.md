@@ -33,6 +33,7 @@ Made for **WoW Forever**.
 ### Stays out of your way
 - A small panel you can drag anywhere, lock in place, or hide
 - Hover over it for the full breakdown; right-click it for options
+- Shows your current speed in the panel's corner (as %, yd/s, mph or km/h), if you like
 - Lightweight, with no libraries. Your totals are saved on your computer only.
 
 ---
@@ -49,7 +50,7 @@ Made for **WoW Forever**.
 
 Open the options window by right-clicking the panel, typing `/howfar options`, or going to **Esc > Options > AddOns > How Far Have I Been**.
 
-- **Display:** show or lock the panel, choose units, reset the panel's position
+- **Display:** show or lock the panel, choose units, show your current speed and its format, reset the panel's position
 - **Milestones:** turn them on or off, choose how often (a fixed distance or progressive), guild message, sound, and a test button
 - **Data:** reset this character's totals (asks first)
 
@@ -63,6 +64,7 @@ Type `/howfar` or `/hfib`:
 - `/howfar options`: open the options window
 - `/howfar show`, `hide`, `lock`, `unlock`: control the panel
 - `/howfar units miles`, `km` or `yards`: change units
+- `/howfar speed on`, `off`, `percent`, `yards`, `mph` or `kmh`: the speed readout on the panel and its format
 - `/howfar milestone 10`: a milestone every 10 miles (add `km` for kilometres)
 - `/howfar milestone progressive`: milestones at 1-5, then 10, 20 ... 100, 200 ... (add `km` for kilometres)
 - `/howfar milestone off`: turn milestones off

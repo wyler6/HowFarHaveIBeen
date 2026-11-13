@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Current speed on the panel.** Your movement speed shows in the panel's bottom-right corner, as a
+  percentage of normal run speed, yd/s, mph or km/h. Turn it on or off and pick the format in the Options
+  window or with `/howfar speed on|off|percent|yards|mph|kmh`.
+
 ## 1.2.0
 
 - **Skyborne glide total.** Gliding is now tracked as its own distance (shown as "Glided" for
