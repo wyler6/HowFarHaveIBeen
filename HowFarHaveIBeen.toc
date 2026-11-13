@@ -2,7 +2,7 @@
 ## Title: How Far Have I Been
 ## Notes: Tracks how far your character has walked, run, swum and ridden.
 ## Author: wyler6
-## Version: 1.2.0
+## Version: 1.3.0
 ## SavedVariables: HowFarHaveIBeenDB
 ## IconTexture: Interface\AddOns\HowFarHaveIBeen\Media\icon
 ## X-Curse-Project-ID: 1787516

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.0
 
 - **Current speed on the panel.** Your movement speed shows in the panel's bottom-right corner, as a
   percentage of normal run speed, yd/s, mph or km/h. Turn it on or off and pick the format in the Options
