@@ -158,38 +158,67 @@ function ns.PlayerFullName()
     return first .. tail
 end
 
-local function currentRealm()
-    local realm
-    if GetNormalizedRealmName then realm = GetNormalizedRealmName() end
-    if not nonEmptyString(realm) and GetRealmName then realm = GetRealmName() end
-    if not nonEmptyString(realm) then realm = "Forever" end -- Forever is realmless
-    return realm
+-- Character keys carry NO realm: just the full name ("Light Ofhope"). The realm
+-- name is not stable on Forever (an update on 2026-11-20 made it come back
+-- empty, which split every character's totals into a second entry), so older
+-- keys of the form "<name>-<realm>" (and the even older "<first>-<realm>")
+-- are folded into the canonical entry at login.
+local function resolveCharKey()
+    local first, surname = readNameParts()
+    if not first then return "Unknown", nil, nil end
+    if not surname then return first, first, first end
+    return ns.PlayerFullName(), first, ns.PlayerFullName()
 end
 
--- Returns the new key and the legacy first-name-only key.
-local function resolveCharKeys()
-    local first, surname = readNameParts()
-    local realm = currentRealm()
-    local oldKey = (first or "Unknown") .. "-" .. realm
-    if not surname then return oldKey, oldKey end
-    return ns.PlayerFullName() .. "-" .. realm, oldKey
+local function hasPrefix(k, prefix)
+    return k:sub(1, #prefix) == prefix
+end
+
+-- Folds every legacy entry for this character into chars[key] and deletes them.
+local function foldLegacy(chars, key, first, full)
+    local legacy = {}
+    for k, v in pairs(chars) do
+        if type(k) == "string" and k ~= key and type(v) == "table"
+            and (hasPrefix(k, full .. "-") or hasPrefix(k, first .. "-")
+                or (key == full and k == first)) then
+            legacy[#legacy + 1] = k
+        end
+    end
+    if #legacy == 0 then return end
+    table.sort(legacy)
+    local entry = chars[key]
+    if type(entry) ~= "table" then
+        entry = {}
+        chars[key] = entry
+    end
+    local isCat = {}
+    for _, cat in ipairs(CATEGORIES) do isCat[cat] = true end
+    for _, k in ipairs(legacy) do
+        local old = chars[k]
+        for _, cat in ipairs(CATEGORIES) do
+            entry[cat] = (type(entry[cat]) == "number" and entry[cat] or 0)
+                + (type(old[cat]) == "number" and old[cat] or 0)
+        end
+        if type(old.firstSeen) == "number"
+            and (type(entry.firstSeen) ~= "number" or old.firstSeen < entry.firstSeen) then
+            entry.firstSeen = old.firstSeen
+        end
+        for f, v in pairs(old) do
+            if not isCat[f] and f ~= "firstSeen" and entry[f] == nil then entry[f] = v end
+        end
+        chars[k] = nil
+    end
 end
 
 local function initChar()
-    local newKey, oldKey = resolveCharKeys()
-    ns.charKey = newKey
+    local key, first, full = resolveCharKey()
+    ns.charKey = key
     local chars = HowFarHaveIBeenDB.chars
-    -- Forever is realmless, so first names alone may not be unique: keys now
-    -- include the surname. One-time migration of the old first-name-only entry;
-    -- never overwrite an existing entry under the new key.
-    if newKey ~= oldKey and chars[newKey] == nil and type(chars[oldKey]) == "table" then
-        chars[newKey] = chars[oldKey]
-        chars[oldKey] = nil
-    end
-    local entry = chars[ns.charKey]
+    if first then foldLegacy(chars, key, first, full) end
+    local entry = chars[key]
     if type(entry) ~= "table" then
         entry = {}
-        chars[ns.charKey] = entry
+        chars[key] = entry
     end
     for _, cat in ipairs(CATEGORIES) do
         if type(entry[cat]) ~= "number" then entry[cat] = 0 end

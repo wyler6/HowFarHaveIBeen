@@ -276,8 +276,8 @@ def t_l_existing_db():
     assert db.settings.locked is False and db.settings.hidden is False
     assert db.chars["Old-Realm"].walk == 100 and db.chars["Old-Realm"].firstSeen == 5
     e.fire("PLAYER_LOGIN")
-    assert e.ns.charKey == "Tester-Forever", e.ns.charKey
-    assert db.chars["Tester-Forever"].run == 0
+    assert e.ns.charKey == "Tester", e.ns.charKey  # keys carry no realm
+    assert db.chars["Tester"].run == 0
     approx(e.ns.OnFoot(e.ns.GetAccountTotals()), 300, 0.001, "account on foot")
 
 
@@ -999,7 +999,7 @@ def t_nm5_separator_constant():
         env.L.execute('Constants = {CharacterNameSeparatorConsts = {CHARACTERNAME_SURNAME_SEPARATOR = "_"}}')
     e = surname_env("Ashvale", setup=setup)
     assert sent(e)[0][0].startswith("Tester_Ashvale has travelled"), sent(e)
-    assert e.ns.charKey == "Tester_Ashvale-Forever", e.ns.charKey
+    assert e.ns.charKey == "Tester_Ashvale", e.ns.charKey
 
 
 def t_nm6_summary_full_name():
@@ -1021,27 +1021,155 @@ def preload_env(chars_lua, surname):
 def t_nm7_migration():
     e = preload_env('{["Tester-Forever"]={walk=0,run=500,swim=0,mount=0,ghost=0,firstSeen=5}}', "Ashvale")
     chars = e.G.HowFarHaveIBeenDB.chars
-    assert e.ns.charKey == "Tester Ashvale-Forever", e.ns.charKey
-    assert chars["Tester Ashvale-Forever"].run == 500 and chars["Tester Ashvale-Forever"].firstSeen == 5
+    assert e.ns.charKey == "Tester Ashvale", e.ns.charKey
+    assert chars["Tester Ashvale"].run == 500 and chars["Tester Ashvale"].firstSeen == 5
     assert chars["Tester-Forever"] is None
     assert e.ns.char.run == 500
     approx(e.ns.OnFoot(e.ns.GetAccountTotals()), 500, 0.001, "account on foot")
 
 
-def t_nm8_no_migration_overwrite():
+def t_nm8_legacy_entries_fold_into_existing():
+    # Both the first-name legacy entry and a legacy full-name entry are folded together.
     e = preload_env('{["Tester-Forever"]={walk=0,run=500,swim=0,mount=0,ghost=0,firstSeen=5},'
                     '["Tester Ashvale-Forever"]={walk=0,run=77,swim=0,mount=0,ghost=0,firstSeen=9}}', "Ashvale")
     chars = e.G.HowFarHaveIBeenDB.chars
-    assert chars["Tester Ashvale-Forever"].run == 77 and chars["Tester Ashvale-Forever"].firstSeen == 9
-    assert chars["Tester-Forever"].run == 500
-    assert e.ns.char.run == 77
+    assert chars["Tester Ashvale"].run == 577 and chars["Tester Ashvale"].firstSeen == 5
+    assert chars["Tester-Forever"] is None and chars["Tester Ashvale-Forever"] is None
+    assert e.ns.char.run == 577
 
 
-def t_nm9_no_surname_keeps_old_key():
+def t_nm9_no_surname_key_is_first_name():
     e = preload_env('{["Tester-Forever"]={walk=0,run=500,swim=0,mount=0,ghost=0,firstSeen=5}}', None)
     chars = e.G.HowFarHaveIBeenDB.chars
-    assert e.ns.charKey == "Tester-Forever", e.ns.charKey
-    assert chars["Tester-Forever"].run == 500 and e.ns.char.run == 500
+    assert e.ns.charKey == "Tester", e.ns.charKey
+    assert chars["Tester"].run == 500 and e.ns.char.run == 500
+    assert chars["Tester-Forever"] is None
+
+
+# ---------------------------------------------------------------- realm-free character keys (1.4.0)
+SYN = ('{["Tester Ashvale-RealmA"]={walk=10,run=500,swim=1,glide=2,mount=3,ghost=4,firstSeen=20},'
+       '["Tester Ashvale-Forever"]={walk=5,run=100,swim=6,glide=7,mount=8,ghost=9,firstSeen=7},'
+       '["Tester-RealmA"]={walk=1,run=2,swim=3,glide=4,mount=5,ghost=6,firstSeen=30},'
+       '["Other Person"]={walk=11,run=22,swim=33,glide=44,mount=55,ghost=66,firstSeen=3},'
+       '["Other-RealmA"]={walk=100,run=200,swim=300,glide=400,mount=500,ghost=600,firstSeen=4}}')
+CATS = ("walk", "run", "swim", "glide", "mount", "ghost")
+
+
+def fold_env(chars_lua=SYN, surname="Ashvale", realm=None, name="Tester", login=True):
+    e = Env(start=False)
+    e.MOCK.name = name
+    e.MOCK.surname = surname
+    e.MOCK.realm = realm
+    e.G.HowFarHaveIBeenDB = e.L.eval('{version=1, settings={}, chars=%s}' % chars_lua)
+    if login:
+        e.fire("ADDON_LOADED", ADDON)
+        e.fire("PLAYER_LOGIN")
+        e.fire("PLAYER_ENTERING_WORLD")
+    return e
+
+
+def char_keys(e):
+    return sorted(k for k in e.G.HowFarHaveIBeenDB.chars.keys())
+
+
+def account_sum(e):
+    a = e.ns.GetAccountTotals()
+    return {c: a[c] for c in CATS}
+
+
+def t_key1_fold_full_and_first_name_legacy():
+    e = fold_env()
+    c = e.G.HowFarHaveIBeenDB.chars["Tester Ashvale"]
+    # sum of the RealmA, Forever and first-name-only legacy entries
+    expected = {"walk": 16, "run": 602, "swim": 10, "glide": 13, "mount": 16, "ghost": 19}
+    for cat in CATS:
+        approx(c[cat], expected[cat], 0.001, cat)
+    assert c.firstSeen == 7, c.firstSeen
+    assert e.ns.charKey == "Tester Ashvale"
+    assert char_keys(e) == ["Other Person", "Other-RealmA", "Tester Ashvale"], char_keys(e)
+
+
+def t_key2_first_name_only_legacy_folds():
+    e = fold_env('{["Tester-RealmA"]={walk=1,run=2,swim=3,glide=4,mount=5,ghost=6,firstSeen=30}}')
+    chars = e.G.HowFarHaveIBeenDB.chars
+    c = chars["Tester Ashvale"]
+    assert (c.walk, c.run, c.swim, c.glide, c.mount, c.ghost) == (1, 2, 3, 4, 5, 6)
+    assert c.firstSeen == 30
+    assert chars["Tester-RealmA"] is None
+    assert char_keys(e) == ["Tester Ashvale"]
+
+
+def t_key3_second_login_idempotent():
+    e = fold_env()
+    first = {k: dict(e.G.HowFarHaveIBeenDB.chars[k].items()) for k in char_keys(e)}
+    e.fire("PLAYER_LOGIN")  # a second login over the already-merged data
+    assert char_keys(e) == sorted(first), char_keys(e)
+    for k, v in first.items():
+        now = dict(e.G.HowFarHaveIBeenDB.chars[k].items())
+        assert now == v, (k, now, v)
+
+
+def t_key4_key_ignores_realm():
+    keys = []
+    for realm in (None, "", "RealmA", "Forever"):
+        e = fold_env('{["Tester Ashvale"]={walk=1,run=2,swim=3,glide=4,mount=5,ghost=6,firstSeen=9}}', realm=realm)
+        keys.append(e.ns.charKey)
+        assert char_keys(e) == ["Tester Ashvale"], (realm, char_keys(e))
+        assert e.ns.char.run == 2
+    assert keys == ["Tester Ashvale"] * 4, keys
+    keys = [fold_env("{}", surname=None, realm=r).ns.charKey for r in (None, "RealmA")]
+    assert keys == ["Tester", "Tester"], keys
+
+
+def t_key5_others_untouched_and_account_totals_unchanged():
+    before = fold_env(login=False)
+    chars = before.G.HowFarHaveIBeenDB.chars
+    total_before = {c: 0 for c in CATS}
+    for k in char_keys(before):
+        for c in CATS:
+            total_before[c] += chars[k][c]
+    e = fold_env()
+    other = e.G.HowFarHaveIBeenDB.chars["Other Person"]
+    assert (other.walk, other.run, other.swim, other.glide, other.mount, other.ghost, other.firstSeen) == (11, 22, 33, 44, 55, 66, 3)
+    unrelated = e.G.HowFarHaveIBeenDB.chars["Other-RealmA"]
+    assert (unrelated.walk, unrelated.run, unrelated.firstSeen) == (100, 200, 4)
+    after = account_sum(e)
+    for c in CATS:
+        approx(after[c], total_before[c], 0.001, "account " + c)
+
+
+def t_key6_merge_login_fires_nothing_even_across_milestone():
+    # 3 miles + 3 miles of legacy running: the merged 6 miles crosses the 5-mile boundary.
+    mi = 1760
+    chars = ('{["Tester Ashvale-RealmA"]={walk=0,run=%d,swim=0,mount=0,ghost=0,firstSeen=20},'
+             '["Tester Ashvale-Forever"]={walk=0,run=%d,swim=0,mount=0,ghost=0,firstSeen=7}}' % (3 * mi, 3 * mi))
+    e = fold_env(chars)
+    assert e.G.HowFarHaveIBeenDB.chars["Tester Ashvale"].run == 6 * mi
+    assert sent(e) == [] and sounds(e) == []
+    assert not any("Milestone" in m for m in e.chat()), e.chat()
+    e.run_line(3, 7)  # keep moving: the already-passed 5-mile mark must not fire late
+    assert sent(e) == [] and sounds(e) == []
+
+
+def t_key7_no_surname_and_no_name():
+    # no surname: first name is the key; "<First>-<realm>" legacy entries fold into it
+    e = fold_env('{["Tester-RealmA"]={walk=1,run=2,swim=0,mount=0,ghost=0,firstSeen=4},'
+                 '["Tester-Forever"]={walk=3,run=4,swim=0,mount=0,ghost=0,firstSeen=2},'
+                 '["Tester"]={walk=10,run=20,swim=0,mount=0,ghost=0,firstSeen=8}}', surname=None)
+    assert e.ns.charKey == "Tester"
+    c = e.G.HowFarHaveIBeenDB.chars["Tester"]
+    assert (c.walk, c.run, c.firstSeen) == (14, 26, 2)
+    assert char_keys(e) == ["Tester"], char_keys(e)
+    # no readable name: key "Unknown", nothing deleted or merged
+    src = ('{["Tester-RealmA"]={walk=1,run=2,swim=0,mount=0,ghost=0,firstSeen=4},'
+           '["Tester Ashvale-Forever"]={walk=3,run=4,swim=0,mount=0,ghost=0,firstSeen=2}}')
+    for nm in (None, ""):
+        e = fold_env(src, surname=None, name=nm)
+        assert e.ns.charKey == "Unknown", e.ns.charKey
+        chars = e.G.HowFarHaveIBeenDB.chars
+        assert chars["Tester-RealmA"].run == 2 and chars["Tester Ashvale-Forever"].run == 4
+        assert char_keys(e) == ["Tester Ashvale-Forever", "Tester-RealmA", "Unknown"], char_keys(e)
+        assert chars["Unknown"].run == 0
 
 
 # ---------------------------------------------------------------- progressive milestones
@@ -1290,7 +1418,7 @@ def t_gl9_old_data_and_reset():
     approx(e.ns.GetAccountTotals().glide, 50, 0.001, "account glide")
     assert e.ns.Total(e.ns.char) == 1 + 2 + 3 + 4 + 5 + 50
     e.ns.ResetCharTotals()
-    assert e.ns.char.glide == 0 and e.G.HowFarHaveIBeenDB.chars["Tester-Forever"].glide == 0
+    assert e.ns.char.glide == 0 and e.G.HowFarHaveIBeenDB.chars["Tester"].glide == 0
 
 
 def tooltip_for(e):
