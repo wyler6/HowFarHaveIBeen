@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.0
+
+- **Characters are keyed by name only, not realm.** The realm name is not stable on Forever (an update
+  blanked it and split each character's totals in two). Existing entries are merged back into one at
+  login, adding the distances together; nothing is lost and no milestones fire.
+
 ## 1.3.0
 
 - **Current speed on the panel.** Your movement speed shows in the panel's bottom-right corner, as a
