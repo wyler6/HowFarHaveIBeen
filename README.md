@@ -22,12 +22,13 @@ Install it from CurseForge, or copy the addon files (`HowFarHaveIBeen.toc` and t
 | `milestone test` | Play the sound and print the local line; never posts to guild |
 | `announce on\|off` | Turn the guild message on or off |
 | `sound on\|off` | Turn the milestone sound on or off |
+| `report` | Post a one-line distance report for this character to guild chat (same as Ctrl+click on the panel; 10 s cooldown) |
 | `options` / `config` | Open or close the options window |
 | `reset` / `reset confirm` | Erase this character's totals (needs `confirm`) |
 | `debug` | Show which position/speed APIs work right now and the last measuring method |
 | `help` | List commands |
 
-The panel: left-drag to move (unless locked), right-click to open the options window. Hover for the full breakdown.
+The panel: left-drag to move (unless locked), right-click to open the options window, Ctrl+click to post your distances to guild chat. Hover for the full breakdown.
 
 ## Options window
 Open it with right-click on the panel, `/howfar options` (or `/howfar config`, `/hfib options`), or the

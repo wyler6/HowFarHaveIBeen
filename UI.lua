@@ -84,6 +84,7 @@ local function showTooltip(owner)
     local src = ns.CurrentSource and ns.CurrentSource()
     GameTooltip:AddLine("Method: " .. (SOURCE_TEXT[src] or "Speed estimate"), 0.7, 0.7, 0.7)
     GameTooltip:AddLine("Drag to move \194\183 Right-click: options", 0.5, 0.5, 0.5)
+    GameTooltip:AddLine("Ctrl+click: post report to guild", 0.5, 0.5, 0.5)
     GameTooltip:Show()
 end
 
@@ -125,7 +126,11 @@ function ns.UI_Init()
     -- Restore saved position, or use the default.
     applyPosition()
 
+    panel:SetScript("OnMouseDown", function(self)
+        self._dragged = false
+    end)
     panel:SetScript("OnDragStart", function(self)
+        self._dragged = true
         if not settings().locked then self:StartMoving() end
     end)
     panel:SetScript("OnDragStop", function(self)
@@ -134,9 +139,12 @@ function ns.UI_Init()
         local s = ns.GetSettings()
         if s then s.point = { point, relPoint, x, y } end
     end)
-    panel:SetScript("OnMouseUp", function(_, button)
+    panel:SetScript("OnMouseUp", function(self, button)
         if button == "RightButton" then
             if ns.ToggleOptions then ns.ToggleOptions() end
+        elseif button == "LeftButton" and not self._dragged
+            and type(IsControlKeyDown) == "function" and IsControlKeyDown() then
+            ns.PostReport()
         end
     end)
     panel:SetScript("OnEnter", function(self) showTooltip(self) end)

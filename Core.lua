@@ -422,6 +422,73 @@ local function sendGuild(msg)
     flushGuild()
 end
 
+------------------------------------------------------------------------
+-- Distance report (Ctrl+click on the panel, /howfar report)
+------------------------------------------------------------------------
+local REPORT_COOLDOWN = 10     -- seconds between reports
+local lastReport               -- GetTime() of the last report that was posted or queued
+
+local function joinNatural(items)
+    local n = #items
+    if n == 1 then return items[1] end
+    if n == 2 then return items[1] .. " and " .. items[2] end
+    return table.concat(items, ", ", 1, n - 1) .. " and " .. items[n]
+end
+
+-- One-line report for this character, or nil before the totals exist.
+function ns.BuildReport()
+    local c = ns.char
+    if not c then return nil end
+    local zero = ns.Format(0)
+    local function nz(v)
+        local s = ns.Format(v or 0)
+        if s ~= zero then return s end
+        return nil
+    end
+    local head = ns.PlayerFullName() .. " has travelled " .. ns.Format(ns.OnFoot(c)) .. " on foot"
+    local parts = {}
+    local ran, walked = nz(c.run), nz(c.walk)
+    if ran then parts[#parts + 1] = "ran " .. ran end
+    if walked then parts[#parts + 1] = "walked " .. walked end
+    local paren = (#parts > 0) and (" (" .. table.concat(parts, ", ") .. ")") or ""
+    local items = {}
+    local swim, glide, mount, ghost = nz(c.swim), nz(c.glide), nz(c.mount), nz(c.ghost)
+    if swim then items[#items + 1] = "swam " .. swim end
+    if glide then items[#items + 1] = "glided " .. glide end
+    if mount then items[#items + 1] = "rode " .. mount end
+    if ghost then items[#items + 1] = ghost .. " as a ghost" end
+    local also = (#items > 0) and (" Also " .. joinNatural(items) .. ".") or ""
+    local msg = head .. paren .. "." .. also
+    if #msg >= 255 then msg = head .. paren .. "." end
+    if #msg >= 255 then msg = head .. "." end
+    return msg
+end
+
+function ns.PostReport()
+    local report = ns.BuildReport()
+    if not report then
+        ns.Print("Your totals aren't ready yet.")
+        return
+    end
+    local now = GetTime and GetTime() or 0
+    if lastReport and now - lastReport < REPORT_COOLDOWN then
+        ns.Print(string.format("You can post another report in %d s.", math.ceil(REPORT_COOLDOWN - (now - lastReport))))
+        return
+    end
+    if not flag("IsInGuild") then
+        ns.Print("Not in a guild, so only you see this: " .. report)
+        return
+    end
+    local locked = chatLocked()
+    sendGuild(report)
+    lastReport = now
+    if locked then
+        ns.Print("Report will post to guild when combat ends.")
+    else
+        ns.Print("Posted your distance report to guild chat.")
+    end
+end
+
 local function playMilestoneSound()
     if type(PlaySound) ~= "function" then return end
     pcall(PlaySound, (SOUNDKIT and SOUNDKIT.LEVEL_UP) or 888, "Master")
@@ -627,6 +694,7 @@ local function printHelp()
     ns.Print("  options | config - open the options window")
     ns.Print("  announce on|off - guild message at each milestone")
     ns.Print("  sound on|off - milestone sound")
+    ns.Print("  report - post your distances to guild chat (or Ctrl+click the panel)")
     ns.Print("  reset - erase this character's totals (asks to confirm)")
     ns.Print("  debug - show which APIs are working")
 end
@@ -779,6 +847,8 @@ local function handleSlash(msg)
         else
             ns.Print("Usage: /howfar " .. cmd .. " on|off")
         end
+    elseif cmd == "report" then
+        ns.PostReport()
     elseif cmd == "reset" then
         if arg == "confirm" and ns.char then
             ns.ResetCharTotals()

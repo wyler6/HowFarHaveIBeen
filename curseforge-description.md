@@ -33,6 +33,7 @@ Made for **WoW Forever**.
 ### Stays out of your way
 - A small panel you can drag anywhere, lock in place, or hide
 - Hover over it for the full breakdown; right-click it for options
+- Ctrl+click it to post a one-line distance report to guild chat
 - Shows your current speed in the panel's corner (as %, yd/s, mph or km/h), if you like
 - Lightweight, with no libraries. Your totals are saved on your computer only.
 
@@ -62,6 +63,7 @@ Type `/howfar` or `/hfib`:
 
 - `/howfar`: a summary of your totals
 - `/howfar options`: open the options window
+- `/howfar report`: post your distances to guild chat (or Ctrl+click the panel)
 - `/howfar show`, `hide`, `lock`, `unlock`: control the panel
 - `/howfar units miles`, `km` or `yards`: change units
 - `/howfar speed on`, `off`, `percent`, `yards`, `mph` or `kmh`: the speed readout on the panel and its format

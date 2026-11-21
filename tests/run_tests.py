@@ -1605,6 +1605,184 @@ def t_sp8_options_refresh_from_settings():
     assert is_checked(w.showSpeed) and is_checked(w.speedYards) and is_enabled(w.speedYards)
 
 
+# ---------------------------------------------------------------- distance report
+MI = 1760
+
+
+def report_env(**cats):
+    e = Env()
+    for k, v in cats.items():
+        e.ns.char[k] = v * MI
+    return e
+
+
+def t_rp01_build_all_categories():
+    e = report_env(run=3, walk=2, swim=0.5, glide=1.25, mount=10, ghost=0.25)
+    exp = ("Tester has travelled 5.00 mi on foot (ran 3.00 mi, walked 2.00 mi). "
+           "Also swam 0.50 mi, glided 1.25 mi, rode 10.00 mi and 0.25 mi as a ghost.")
+    assert e.ns.BuildReport() == exp, e.ns.BuildReport()
+
+
+def t_rp02_zeros_omitted():
+    e = report_env(run=3)
+    assert e.ns.BuildReport() == "Tester has travelled 3.00 mi on foot (ran 3.00 mi).", e.ns.BuildReport()
+    e = report_env(walk=2)
+    assert e.ns.BuildReport() == "Tester has travelled 2.00 mi on foot (walked 2.00 mi).", e.ns.BuildReport()
+
+
+def t_rp03_also_join():
+    e = report_env(swim=1)
+    assert e.ns.BuildReport() == "Tester has travelled 0.00 mi on foot. Also swam 1.00 mi.", e.ns.BuildReport()
+    e = report_env(run=1, swim=1, mount=2)
+    assert e.ns.BuildReport() == ("Tester has travelled 1.00 mi on foot (ran 1.00 mi). "
+                                  "Also swam 1.00 mi and rode 2.00 mi."), e.ns.BuildReport()
+    e = report_env(run=1, swim=1, glide=2, mount=3)
+    assert e.ns.BuildReport().endswith("Also swam 1.00 mi, glided 2.00 mi and rode 3.00 mi."), e.ns.BuildReport()
+    e = report_env(ghost=1)
+    assert e.ns.BuildReport().endswith("Also 1.00 mi as a ghost."), e.ns.BuildReport()
+
+
+def t_rp04_no_parens_when_both_zero():
+    e = report_env(mount=4)
+    r = e.ns.BuildReport()
+    assert "(" not in r and r == "Tester has travelled 0.00 mi on foot. Also rode 4.00 mi.", r
+
+
+def t_rp05_units():
+    e = report_env(run=1, walk=1)
+    e.slash("units km")
+    assert e.ns.BuildReport() == "Tester has travelled 3.22 km on foot (ran 1.61 km, walked 1.61 km).", e.ns.BuildReport()
+    e.slash("units yards")
+    assert e.ns.BuildReport() == "Tester has travelled 3,520 yd on foot (ran 1,760 yd, walked 1,760 yd).", e.ns.BuildReport()
+
+
+def t_rp06_glide_only_when_nonzero():
+    e = report_env(run=1)
+    e.MOCK.race = e.L.eval('{"Skyborne", "Skyborne", 95}')
+    assert "glided" not in e.ns.BuildReport()
+    e.ns.char["glide"] = 2 * MI
+    assert e.ns.BuildReport().endswith("Also glided 2.00 mi."), e.ns.BuildReport()
+    e = report_env(run=1)  # Human with no glide
+    assert "glided" not in e.ns.BuildReport()
+
+
+def t_rp07_length_and_truncation():
+    e = report_env(run=3, walk=2, swim=0.5, glide=1.25, mount=10, ghost=0.25)
+    assert len(e.ns.BuildReport()) < 255
+    e.MOCK.surname = "A" * 123  # full report 266 chars: drop "Also", keep parentheses
+    r = e.ns.BuildReport()
+    assert len(r) < 255 and "Also" not in r and r.endswith("(ran 3.00 mi, walked 2.00 mi)."), (len(r), r)
+    e.MOCK.surname = "A" * 193  # still too long: drop the parentheses too
+    r = e.ns.BuildReport()
+    assert len(r) < 255 and "Also" not in r and "(" not in r and r.endswith("on foot."), (len(r), r)
+    assert all(ord(ch) < 128 for ch in r)
+
+
+def panel_click(e, button="LeftButton", ctrl=False):
+    panel = e.G.HowFarHaveIBeenFrame
+    e.MOCK.ctrl = ctrl
+    panel._scripts.OnMouseDown(panel, button)
+    panel._scripts.OnMouseUp(panel, button)
+
+
+def t_rp08_ctrl_click_posts_once():
+    e = report_env(run=3, swim=1)
+    panel_click(e, ctrl=True)
+    s = sent(e)
+    assert s == [(str(e.ns.BuildReport()), "GUILD")], s
+    assert any("Posted your distance report to guild chat." in m for m in e.chat()), e.chat()
+
+
+def t_rp09_plain_and_right_click_send_nothing():
+    e = report_env(run=3)
+    panel_click(e, "LeftButton", ctrl=False)
+    assert sent(e) == [] and e.G.HowFarHaveIBeenOptions is None
+    panel_click(e, "RightButton", ctrl=False)
+    assert sent(e) == [] and e.G.HowFarHaveIBeenOptions._shown is True
+
+
+def t_rp10_drag_never_posts():
+    e = report_env(run=3)
+    panel = e.G.HowFarHaveIBeenFrame
+    e.MOCK.ctrl = True
+    panel._scripts.OnMouseDown(panel, "LeftButton")
+    panel._scripts.OnDragStart(panel)
+    panel._scripts.OnMouseUp(panel, "LeftButton")
+    panel._scripts.OnDragStop(panel)
+    assert sent(e) == []
+    # the next plain click after the drag posts again
+    panel_click(e, ctrl=True)
+    assert len(sent(e)) == 1
+    # drag stop before mouse up also posts nothing
+    e.MOCK.time = e.MOCK.time + 20
+    panel._scripts.OnMouseDown(panel, "LeftButton")
+    panel._scripts.OnDragStart(panel)
+    panel._scripts.OnDragStop(panel)
+    panel._scripts.OnMouseUp(panel, "LeftButton")
+    assert len(sent(e)) == 1
+
+
+def t_rp11_not_in_guild():
+    e = report_env(run=3)
+    e.MOCK.inGuild = False
+    panel_click(e, ctrl=True)
+    assert sent(e) == []
+    assert any("Not in a guild, so only you see this: " + str(e.ns.BuildReport()) in m for m in e.chat()), e.chat()
+    # no cooldown was started: joining a guild lets the next report post at once
+    e.MOCK.inGuild = True
+    panel_click(e, ctrl=True)
+    assert len(sent(e)) == 1
+
+
+def t_rp12_combat_queued():
+    e = report_env(run=3)
+    e.MOCK.inCombat = True
+    panel_click(e, ctrl=True)
+    assert sent(e) == []
+    e.MOCK.inCombat = False
+    e.fire("PLAYER_REGEN_ENABLED")
+    assert any("Report will post to guild when combat ends." in m for m in e.chat()), e.chat()
+    assert len(sent(e)) == 1 and sent(e)[0][0] == str(e.ns.BuildReport())
+    assert not any("Posted your distance report" in m for m in e.chat())
+
+
+def t_rp13_cooldown():
+    e = report_env(run=3)
+    panel_click(e, ctrl=True)
+    assert len(sent(e)) == 1
+    e.MOCK.time = e.MOCK.time + 3.5
+    panel_click(e, ctrl=True)
+    assert len(sent(e)) == 1
+    assert any("You can post another report in 7 s." in m for m in e.chat()), e.chat()
+    e.MOCK.time = e.MOCK.time + 6.5
+    panel_click(e, ctrl=True)
+    assert len(sent(e)) == 2
+
+
+def t_rp14_slash_report_and_help():
+    e = report_env(run=3)
+    e.slash("report")
+    assert sent(e) == [(str(e.ns.BuildReport()), "GUILD")], sent(e)
+    e.slash("help")
+    assert any("report - post your distances to guild chat" in m for m in e.chat()), e.chat()
+
+
+def t_rp15_tooltip_hint_and_milestones_unchanged():
+    e = Env()
+    panel = e.G.HowFarHaveIBeenFrame
+    panel._scripts.OnEnter(panel)
+    tip = e.tooltip()
+    i = [n for n, l in enumerate(tip) if l.startswith("Drag to move")][0]
+    assert tip[i + 1] == "Ctrl+click: post report to guild", tip
+
+
+def t_rp16_not_ready():
+    e = Env(start=False)
+    e.ns.PostReport()
+    assert sent(e) == []
+
+
+
 TESTS = [(n[2:], f) for n, f in sorted(globals().items()) if n.startswith("t_") and callable(f)]
 
 

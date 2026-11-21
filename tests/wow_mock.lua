@@ -19,6 +19,7 @@ MOCK = {
   fontStrings = {},
   tooltip = {},             -- lines added to GameTooltip
   inGuild = true,
+  ctrl = false,             -- IsControlKeyDown()
   chatLockdown = false,
   sounds = {},              -- {id=, channel=} per PlaySound
   sent = {},                -- {msg=, chatType=} per C_ChatInfo.SendChatMessage
@@ -175,6 +176,7 @@ function IsFlying() return MOCK.flying end
 function IsFalling() return MOCK.falling end
 function UnitRace() return MOCK.race[1], MOCK.race[2], MOCK.race[3] end
 function IsInGuild() return MOCK.inGuild end
+function IsControlKeyDown() return MOCK.ctrl end
 
 SOUNDKIT = { LEVEL_UP = 888 }
 function PlaySound(id, channel) MOCK.sounds[#MOCK.sounds + 1] = { id = id, channel = channel } end

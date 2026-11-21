@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Distance report.** Ctrl+click the panel (or type `/howfar report`) to post a one-line report of your
+  distances to guild chat, e.g. `Name has travelled 5.00 mi on foot (ran 3.00 mi, walked 2.00 mi). Also swam 0.50 mi.`
+  Zero categories are left out, and there is a 10 second cooldown.
+
 ## 1.4.0
 
 - **Characters are keyed by name only, not realm.** The realm name is not stable on Forever (an update
