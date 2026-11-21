@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.5.0
 
 - **Distance report.** Ctrl+click the panel (or type `/howfar report`) to post your distances to guild chat,
   each on its own line: your on-foot total, then ran/walked, swam, glided, rode and ghost distance, leaving out
