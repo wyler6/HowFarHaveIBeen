@@ -1616,66 +1616,71 @@ def report_env(**cats):
     return e
 
 
-def t_rp01_build_all_categories():
-    e = report_env(run=3, walk=2, swim=0.5, glide=1.25, mount=10, ghost=0.25)
-    exp = ("Tester has travelled 5.00 mi on foot (ran 3.00 mi, walked 2.00 mi). "
-           "Also swam 0.50 mi, glided 1.25 mi, rode 10.00 mi and 0.25 mi as a ghost.")
-    assert e.ns.BuildReport() == exp, e.ns.BuildReport()
-
-
-def t_rp02_zeros_omitted():
-    e = report_env(run=3)
-    assert e.ns.BuildReport() == "Tester has travelled 3.00 mi on foot (ran 3.00 mi).", e.ns.BuildReport()
-    e = report_env(walk=2)
-    assert e.ns.BuildReport() == "Tester has travelled 2.00 mi on foot (walked 2.00 mi).", e.ns.BuildReport()
-
-
-def t_rp03_also_join():
-    e = report_env(swim=1)
-    assert e.ns.BuildReport() == "Tester has travelled 0.00 mi on foot. Also swam 1.00 mi.", e.ns.BuildReport()
-    e = report_env(run=1, swim=1, mount=2)
-    assert e.ns.BuildReport() == ("Tester has travelled 1.00 mi on foot (ran 1.00 mi). "
-                                  "Also swam 1.00 mi and rode 2.00 mi."), e.ns.BuildReport()
-    e = report_env(run=1, swim=1, glide=2, mount=3)
-    assert e.ns.BuildReport().endswith("Also swam 1.00 mi, glided 2.00 mi and rode 3.00 mi."), e.ns.BuildReport()
-    e = report_env(ghost=1)
-    assert e.ns.BuildReport().endswith("Also 1.00 mi as a ghost."), e.ns.BuildReport()
-
-
-def t_rp04_no_parens_when_both_zero():
-    e = report_env(mount=4)
+def lines_of(e):
     r = e.ns.BuildReport()
-    assert "(" not in r and r == "Tester has travelled 0.00 mi on foot. Also rode 4.00 mi.", r
+    return [r[i] for i in range(1, len(r) + 1)]
+
+
+def sent_msgs(e):
+    return [m for m, _ in sent(e)]
+
+
+ALL_CATS = dict(run=3, walk=2, swim=0.5, glide=1.25, mount=10, ghost=0.25)
+ALL_LINES = ["Tester's travels:", "On foot: 5.00 mi", "Ran: 3.00 mi", "Walked: 2.00 mi",
+             "Swam: 0.50 mi", "Glided: 1.25 mi", "Rode: 10.00 mi", "As a ghost: 0.25 mi"]
+
+
+def t_rp01_build_all_categories():
+    e = report_env(**ALL_CATS)
+    assert lines_of(e) == ALL_LINES, lines_of(e)
+    assert all("|" not in l and not l.startswith(" ") and len(l) < 255 for l in lines_of(e))
+
+
+def t_rp02_only_one_on_foot_category():
+    e = report_env(run=3)
+    assert lines_of(e) == ["Tester's travels:", "On foot: 3.00 mi"], lines_of(e)
+    e = report_env(walk=2)
+    assert lines_of(e) == ["Tester's travels:", "On foot: 2.00 mi"], lines_of(e)
+    e = report_env()
+    assert lines_of(e) == ["Tester's travels:", "On foot: 0.00 mi"], lines_of(e)
+
+
+def t_rp03_ran_and_walked_both():
+    e = report_env(run=3, walk=2)
+    assert lines_of(e) == ["Tester's travels:", "On foot: 5.00 mi", "Ran: 3.00 mi", "Walked: 2.00 mi"], lines_of(e)
+    e = report_env(run=1, swim=1, mount=2)
+    assert lines_of(e) == ["Tester's travels:", "On foot: 1.00 mi", "Swam: 1.00 mi", "Rode: 2.00 mi"], lines_of(e)
+    e = report_env(ghost=1)
+    assert lines_of(e)[-1] == "As a ghost: 1.00 mi", lines_of(e)
 
 
 def t_rp05_units():
     e = report_env(run=1, walk=1)
     e.slash("units km")
-    assert e.ns.BuildReport() == "Tester has travelled 3.22 km on foot (ran 1.61 km, walked 1.61 km).", e.ns.BuildReport()
+    assert lines_of(e) == ["Tester's travels:", "On foot: 3.22 km", "Ran: 1.61 km", "Walked: 1.61 km"], lines_of(e)
     e.slash("units yards")
-    assert e.ns.BuildReport() == "Tester has travelled 3,520 yd on foot (ran 1,760 yd, walked 1,760 yd).", e.ns.BuildReport()
+    assert lines_of(e) == ["Tester's travels:", "On foot: 3,520 yd", "Ran: 1,760 yd", "Walked: 1,760 yd"], lines_of(e)
 
 
 def t_rp06_glide_only_when_nonzero():
     e = report_env(run=1)
     e.MOCK.race = e.L.eval('{"Skyborne", "Skyborne", 95}')
-    assert "glided" not in e.ns.BuildReport()
+    assert not any(l.startswith("Glided") for l in lines_of(e))
     e.ns.char["glide"] = 2 * MI
-    assert e.ns.BuildReport().endswith("Also glided 2.00 mi."), e.ns.BuildReport()
-    e = report_env(run=1)  # Human with no glide
-    assert "glided" not in e.ns.BuildReport()
+    assert lines_of(e)[-1] == "Glided: 2.00 mi", lines_of(e)
+    e = report_env(run=1)
+    assert not any(l.startswith("Glided") for l in lines_of(e))
 
 
-def t_rp07_length_and_truncation():
-    e = report_env(run=3, walk=2, swim=0.5, glide=1.25, mount=10, ghost=0.25)
-    assert len(e.ns.BuildReport()) < 255
-    e.MOCK.surname = "A" * 123  # full report 266 chars: drop "Also", keep parentheses
-    r = e.ns.BuildReport()
-    assert len(r) < 255 and "Also" not in r and r.endswith("(ran 3.00 mi, walked 2.00 mi)."), (len(r), r)
-    e.MOCK.surname = "A" * 193  # still too long: drop the parentheses too
-    r = e.ns.BuildReport()
-    assert len(r) < 255 and "Also" not in r and "(" not in r and r.endswith("on foot."), (len(r), r)
-    assert all(ord(ch) < 128 for ch in r)
+def t_rp07_long_name_header():
+    e = report_env(**ALL_CATS)
+    e.MOCK.surname = "A" * 400
+    ls = lines_of(e)
+    assert len(ls) == len(ALL_LINES) and all(len(l) < 255 for l in ls), [len(l) for l in ls]
+    assert ls[0].startswith("Tester AAAA") and ls[0].endswith("'s travels:"), ls[0]
+    assert ls[1:] == ALL_LINES[1:]
+    e.MOCK.surname = "A" * 100
+    assert lines_of(e)[0] == "Tester " + "A" * 100 + "'s travels:"
 
 
 def panel_click(e, button="LeftButton", ctrl=False):
@@ -1686,10 +1691,11 @@ def panel_click(e, button="LeftButton", ctrl=False):
 
 
 def t_rp08_ctrl_click_posts_once():
-    e = report_env(run=3, swim=1)
+    e = report_env(**ALL_CATS)
     panel_click(e, ctrl=True)
     s = sent(e)
-    assert s == [(str(e.ns.BuildReport()), "GUILD")], s
+    assert s == [(l, "GUILD") for l in ALL_LINES], s
+    assert s == [(l, "GUILD") for l in lines_of(e)]
     assert any("Posted your distance report to guild chat." in m for m in e.chat()), e.chat()
 
 
@@ -1712,14 +1718,14 @@ def t_rp10_drag_never_posts():
     assert sent(e) == []
     # the next plain click after the drag posts again
     panel_click(e, ctrl=True)
-    assert len(sent(e)) == 1
+    assert len(sent(e)) == 2
     # drag stop before mouse up also posts nothing
     e.MOCK.time = e.MOCK.time + 20
     panel._scripts.OnMouseDown(panel, "LeftButton")
     panel._scripts.OnDragStart(panel)
     panel._scripts.OnDragStop(panel)
     panel._scripts.OnMouseUp(panel, "LeftButton")
-    assert len(sent(e)) == 1
+    assert len(sent(e)) == 2
 
 
 def t_rp11_not_in_guild():
@@ -1727,42 +1733,49 @@ def t_rp11_not_in_guild():
     e.MOCK.inGuild = False
     panel_click(e, ctrl=True)
     assert sent(e) == []
-    assert any("Not in a guild, so only you see this: " + str(e.ns.BuildReport()) in m for m in e.chat()), e.chat()
+    chat = e.chat()
+    i = [n for n, m in enumerate(chat) if m.endswith("Not in a guild, so only you see this:")]
+    assert len(i) == 1, chat
+    got = chat[i[0] + 1:i[0] + 1 + len(lines_of(e))]
+    assert [m.split(" ", 1)[1] for m in got] == lines_of(e), chat
     # no cooldown was started: joining a guild lets the next report post at once
     e.MOCK.inGuild = True
     panel_click(e, ctrl=True)
-    assert len(sent(e)) == 1
+    assert len(sent(e)) == 2
 
 
 def t_rp12_combat_queued():
-    e = report_env(run=3)
+    e = report_env(**ALL_CATS)
     e.MOCK.inCombat = True
     panel_click(e, ctrl=True)
     assert sent(e) == []
     e.MOCK.inCombat = False
     e.fire("PLAYER_REGEN_ENABLED")
     assert any("Report will post to guild when combat ends." in m for m in e.chat()), e.chat()
-    assert len(sent(e)) == 1 and sent(e)[0][0] == str(e.ns.BuildReport())
+    assert sent_msgs(e) == ALL_LINES, sent(e)
+    e.fire("PLAYER_REGEN_ENABLED")
+    assert len(sent(e)) == len(ALL_LINES)
     assert not any("Posted your distance report" in m for m in e.chat())
 
 
 def t_rp13_cooldown():
     e = report_env(run=3)
     panel_click(e, ctrl=True)
-    assert len(sent(e)) == 1
+    n = len(sent(e))
+    assert n == 2  # header + On foot: the cooldown is per report, not per line
     e.MOCK.time = e.MOCK.time + 3.5
     panel_click(e, ctrl=True)
-    assert len(sent(e)) == 1
+    assert len(sent(e)) == n
     assert any("You can post another report in 7 s." in m for m in e.chat()), e.chat()
     e.MOCK.time = e.MOCK.time + 6.5
     panel_click(e, ctrl=True)
-    assert len(sent(e)) == 2
+    assert len(sent(e)) == 2 * n
 
 
 def t_rp14_slash_report_and_help():
     e = report_env(run=3)
     e.slash("report")
-    assert sent(e) == [(str(e.ns.BuildReport()), "GUILD")], sent(e)
+    assert sent(e) == [("Tester's travels:", "GUILD"), ("On foot: 3.00 mi", "GUILD")], sent(e)
     e.slash("help")
     assert any("report - post your distances to guild chat" in m for m in e.chat()), e.chat()
 

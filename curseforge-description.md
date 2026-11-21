@@ -33,7 +33,7 @@ Made for **WoW Forever**.
 ### Stays out of your way
 - A small panel you can drag anywhere, lock in place, or hide
 - Hover over it for the full breakdown; right-click it for options
-- Ctrl+click it to post a one-line distance report to guild chat
+- Ctrl+click it to post your distances to guild chat, each on its own line
 - Shows your current speed in the panel's corner (as %, yd/s, mph or km/h), if you like
 - Lightweight, with no libraries. Your totals are saved on your computer only.
 

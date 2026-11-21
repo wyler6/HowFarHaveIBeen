@@ -428,14 +428,9 @@ end
 local REPORT_COOLDOWN = 10     -- seconds between reports
 local lastReport               -- GetTime() of the last report that was posted or queued
 
-local function joinNatural(items)
-    local n = #items
-    if n == 1 then return items[1] end
-    if n == 2 then return items[1] .. " and " .. items[2] end
-    return table.concat(items, ", ", 1, n - 1) .. " and " .. items[n]
-end
-
--- One-line report for this character, or nil before the totals exist.
+-- Report lines for this character (one chat message each), or nil before the
+-- totals exist. Walked/Ran only show when both are non-zero (otherwise they
+-- would just repeat the On foot line).
 function ns.BuildReport()
     local c = ns.char
     if not c then return nil end
@@ -445,23 +440,21 @@ function ns.BuildReport()
         if s ~= zero then return s end
         return nil
     end
-    local head = ns.PlayerFullName() .. " has travelled " .. ns.Format(ns.OnFoot(c)) .. " on foot"
-    local parts = {}
+    local suffix = "'s travels:"
+    local name = ns.PlayerFullName()
+    if #name + #suffix > 254 then name = name:sub(1, 254 - #suffix) end
+    local lines = { name .. suffix, "On foot: " .. ns.Format(ns.OnFoot(c)) }
     local ran, walked = nz(c.run), nz(c.walk)
-    if ran then parts[#parts + 1] = "ran " .. ran end
-    if walked then parts[#parts + 1] = "walked " .. walked end
-    local paren = (#parts > 0) and (" (" .. table.concat(parts, ", ") .. ")") or ""
-    local items = {}
-    local swim, glide, mount, ghost = nz(c.swim), nz(c.glide), nz(c.mount), nz(c.ghost)
-    if swim then items[#items + 1] = "swam " .. swim end
-    if glide then items[#items + 1] = "glided " .. glide end
-    if mount then items[#items + 1] = "rode " .. mount end
-    if ghost then items[#items + 1] = ghost .. " as a ghost" end
-    local also = (#items > 0) and (" Also " .. joinNatural(items) .. ".") or ""
-    local msg = head .. paren .. "." .. also
-    if #msg >= 255 then msg = head .. paren .. "." end
-    if #msg >= 255 then msg = head .. "." end
-    return msg
+    if ran and walked then
+        lines[#lines + 1] = "Ran: " .. ran
+        lines[#lines + 1] = "Walked: " .. walked
+    end
+    local extras = { { "Swam: ", c.swim }, { "Glided: ", c.glide }, { "Rode: ", c.mount }, { "As a ghost: ", c.ghost } }
+    for _, x in ipairs(extras) do
+        local v = nz(x[2])
+        if v then lines[#lines + 1] = x[1] .. v end
+    end
+    return lines
 end
 
 function ns.PostReport()
@@ -476,11 +469,12 @@ function ns.PostReport()
         return
     end
     if not flag("IsInGuild") then
-        ns.Print("Not in a guild, so only you see this: " .. report)
+        ns.Print("Not in a guild, so only you see this:")
+        for _, line in ipairs(report) do ns.Print(line) end
         return
     end
     local locked = chatLocked()
-    sendGuild(report)
+    for _, line in ipairs(report) do sendGuild(line) end
     lastReport = now
     if locked then
         ns.Print("Report will post to guild when combat ends.")

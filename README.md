@@ -22,7 +22,7 @@ Install it from CurseForge, or copy the addon files (`HowFarHaveIBeen.toc` and t
 | `milestone test` | Play the sound and print the local line; never posts to guild |
 | `announce on\|off` | Turn the guild message on or off |
 | `sound on\|off` | Turn the milestone sound on or off |
-| `report` | Post a one-line distance report for this character to guild chat (same as Ctrl+click on the panel; 10 s cooldown) |
+| `report` | Post this character's distances to guild chat, each on its own line (same as Ctrl+click on the panel; 10 s cooldown) |
 | `options` / `config` | Open or close the options window |
 | `reset` / `reset confirm` | Erase this character's totals (needs `confirm`) |
 | `debug` | Show which position/speed APIs work right now and the last measuring method |
