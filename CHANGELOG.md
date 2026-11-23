@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.5.1
 
 - **Report lines arrive in order.** Guild chat is now sent one message at a time, 0.25 s apart, so the lines
   of a distance report no longer arrive scrambled.
