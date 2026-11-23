@@ -22,7 +22,10 @@ MOCK = {
   ctrl = false,             -- IsControlKeyDown()
   chatLockdown = false,
   sounds = {},              -- {id=, channel=} per PlaySound
-  sent = {},                -- {msg=, chatType=} per C_ChatInfo.SendChatMessage
+  sent = {},                -- {msg=, chatType=, time=, fromTimer=} per C_ChatInfo.SendChatMessage
+  inTimer = false,          -- true while a C_Timer callback runs
+  timers = {},              -- pending C_Timer.After entries {at=, fn=, seq=}
+  timerSeq = 0,
 }
 
 -- Secret value sentinel: any arithmetic/comparison/concat/length use throws.
@@ -182,8 +185,18 @@ SOUNDKIT = { LEVEL_UP = 888 }
 function PlaySound(id, channel) MOCK.sounds[#MOCK.sounds + 1] = { id = id, channel = channel } end
 
 C_ChatInfo = {
-  SendChatMessage = function(msg, chatType) MOCK.sent[#MOCK.sent + 1] = { msg = msg, chatType = chatType } end,
+  SendChatMessage = function(msg, chatType)
+    MOCK.sent[#MOCK.sent + 1] = { msg = msg, chatType = chatType, time = MOCK.time, fromTimer = MOCK.inTimer and true or false }
+  end,
   InChatMessagingLockdown = function() return MOCK.chatLockdown end,
+}
+
+-- Timers: run by TickFrames. To run without it, set `C_Timer = nil` before the addon loads.
+C_Timer = {
+  After = function(delay, fn)
+    MOCK.timerSeq = MOCK.timerSeq + 1
+    MOCK.timers[#MOCK.timers + 1] = { at = MOCK.time + delay, fn = fn, seq = MOCK.timerSeq }
+  end,
 }
 
 function GetUnitSpeed()
@@ -232,5 +245,21 @@ function TickFrames(elapsed)
   Sync()
   for _, f in ipairs(MOCK.frames) do
     if f._scripts.OnUpdate then f._scripts.OnUpdate(f, elapsed) end
+  end
+  -- Run due timers in (at, seq) order, including ones scheduled by callbacks.
+  while true do
+    local bi
+    for i, t in ipairs(MOCK.timers) do
+      if t.at <= MOCK.time then
+        local b = MOCK.timers[bi or i]
+        if not bi or t.at < b.at or (t.at == b.at and t.seq < b.seq) then bi = i end
+      end
+    end
+    if not bi then break end
+    local t = table.remove(MOCK.timers, bi)
+    MOCK.inTimer = true
+    local ok, err = pcall(t.fn)
+    MOCK.inTimer = false
+    if not ok then error(err, 0) end
   end
 end

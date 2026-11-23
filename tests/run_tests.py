@@ -530,9 +530,11 @@ def t_ms5_combat_deferral():
     assert not any("Milestone!" in m for m in e.chat())  # local line queued too
     e.MOCK.inCombat = False
     e.fire("PLAYER_REGEN_ENABLED")
+    settle(e)
     assert len(sent(e)) == 1 and "5 miles" in sent(e)[0][0]
     assert any("Milestone!" in m for m in e.chat())
     e.fire("PLAYER_REGEN_ENABLED")
+    settle(e)
     assert len(sent(e)) == 1
 
 
@@ -1625,6 +1627,12 @@ def sent_msgs(e):
     return [m for m, _ in sent(e)]
 
 
+def settle(e, seconds=3.0):
+    """Let paced guild sends (C_Timer callbacks) run."""
+    for _ in range(int(round(seconds / DT))):
+        e.step()
+
+
 ALL_CATS = dict(run=3, walk=2, swim=0.5, glide=1.25, mount=10, ghost=0.25)
 ALL_LINES = ["Tester's travels:", "On foot: 5.00 mi", "Ran: 3.00 mi", "Walked: 2.00 mi",
              "Swam: 0.50 mi", "Glided: 1.25 mi", "Rode: 10.00 mi", "As a ghost: 0.25 mi"]
@@ -1693,10 +1701,11 @@ def panel_click(e, button="LeftButton", ctrl=False):
 def t_rp08_ctrl_click_posts_once():
     e = report_env(**ALL_CATS)
     panel_click(e, ctrl=True)
+    settle(e)
     s = sent(e)
     assert s == [(l, "GUILD") for l in ALL_LINES], s
     assert s == [(l, "GUILD") for l in lines_of(e)]
-    assert any("Posted your distance report to guild chat." in m for m in e.chat()), e.chat()
+    assert any("Posting your distance report to guild chat." in m for m in e.chat()), e.chat()
 
 
 def t_rp09_plain_and_right_click_send_nothing():
@@ -1718,6 +1727,7 @@ def t_rp10_drag_never_posts():
     assert sent(e) == []
     # the next plain click after the drag posts again
     panel_click(e, ctrl=True)
+    settle(e)
     assert len(sent(e)) == 2
     # drag stop before mouse up also posts nothing
     e.MOCK.time = e.MOCK.time + 20
@@ -1741,6 +1751,7 @@ def t_rp11_not_in_guild():
     # no cooldown was started: joining a guild lets the next report post at once
     e.MOCK.inGuild = True
     panel_click(e, ctrl=True)
+    settle(e)
     assert len(sent(e)) == 2
 
 
@@ -1751,30 +1762,36 @@ def t_rp12_combat_queued():
     assert sent(e) == []
     e.MOCK.inCombat = False
     e.fire("PLAYER_REGEN_ENABLED")
+    settle(e)
     assert any("Report will post to guild when combat ends." in m for m in e.chat()), e.chat()
     assert sent_msgs(e) == ALL_LINES, sent(e)
     e.fire("PLAYER_REGEN_ENABLED")
+    settle(e)
     assert len(sent(e)) == len(ALL_LINES)
-    assert not any("Posted your distance report" in m for m in e.chat())
+    assert not any("Posting your distance report" in m for m in e.chat())
 
 
 def t_rp13_cooldown():
     e = report_env(run=3)
     panel_click(e, ctrl=True)
+    settle(e, 1)
     n = len(sent(e))
     assert n == 2  # header + On foot: the cooldown is per report, not per line
-    e.MOCK.time = e.MOCK.time + 3.5
+    e.MOCK.time = e.MOCK.time + 2.5
     panel_click(e, ctrl=True)
+    settle(e, 1)
     assert len(sent(e)) == n
     assert any("You can post another report in 7 s." in m for m in e.chat()), e.chat()
     e.MOCK.time = e.MOCK.time + 6.5
     panel_click(e, ctrl=True)
+    settle(e)
     assert len(sent(e)) == 2 * n
 
 
 def t_rp14_slash_report_and_help():
     e = report_env(run=3)
     e.slash("report")
+    settle(e)
     assert sent(e) == [("Tester's travels:", "GUILD"), ("On foot: 3.00 mi", "GUILD")], sent(e)
     e.slash("help")
     assert any("report - post your distances to guild chat" in m for m in e.chat()), e.chat()
@@ -1794,6 +1811,148 @@ def t_rp16_not_ready():
     e.ns.PostReport()
     assert sent(e) == []
 
+
+# ---------------------------------------------------------------- paced guild sending
+def sent_entries(e):
+    return [e.MOCK.sent[i] for i in range(1, len(e.MOCK.sent) + 1)]
+
+
+def assert_spaced(e, spacing=0.25):
+    ent = sent_entries(e)
+    for a, b in zip(ent, ent[1:]):
+        assert b.time - a.time >= spacing - 1e-9, (a.msg, a.time, b.msg, b.time)
+
+
+def assert_all_from_timer(e):
+    assert all(x.fromTimer is True for x in sent_entries(e)), sent(e)
+
+
+def t_pg01_report_paced_in_order_from_timer():
+    e = report_env(**ALL_CATS)
+    panel_click(e, ctrl=True)
+    assert len(sent(e)) == 0
+    settle(e)
+    assert sent_msgs(e) == lines_of(e) == ALL_LINES, sent(e)
+    assert_all_from_timer(e)
+    assert_spaced(e)
+
+
+def t_pg02_milestone_sent_from_timer():
+    e = ms_env()
+    e.run_line(3, 7)
+    assert len(sent(e)) == 1 and "5 miles" in sent(e)[0][0], sent(e)
+    # fromTimer is False for any send made synchronously from OnUpdate
+    assert_all_from_timer(e)
+
+
+def t_pg03_milestone_then_report_fifo_and_spacing():
+    e = ms_env()
+    e.run_line(3, 7)
+    e.MOCK.speed = 0
+    e.ns.PostReport()  # straight after the milestone, no gap
+    settle(e)
+    msgs = sent_msgs(e)
+    assert msgs[0] == "Tester has travelled 5 miles on foot!", msgs
+    assert msgs[1:] == lines_of(e), msgs
+    assert len(msgs) == 1 + len(lines_of(e))
+    assert_all_from_timer(e)
+    assert_spaced(e)
+
+
+def t_pg04_combat_after_first_line():
+    e = report_env(**ALL_CATS)
+    panel_click(e, ctrl=True)
+    for _ in range(100):
+        e.step()
+        if len(sent(e)) >= 1:
+            break
+    assert len(sent(e)) == 1, sent(e)
+    e.MOCK.inCombat = True
+    settle(e, 3)
+    assert len(sent(e)) == 1, sent(e)
+    e.MOCK.inCombat = False
+    e.fire("PLAYER_REGEN_ENABLED")
+    assert len(sent(e)) == 1  # nothing synchronous
+    settle(e)
+    assert sent_msgs(e) == ALL_LINES, sent(e)
+    assert_all_from_timer(e)
+    assert_spaced(e)
+
+
+def t_pg05_chat_lockdown_holds_then_retry():
+    e = report_env(**ALL_CATS)
+    e.MOCK.chatLockdown = True
+    panel_click(e, ctrl=True)
+    settle(e, 3)
+    assert sent(e) == []
+    e.MOCK.chatLockdown = False
+    settle(e, 8)
+    assert sent_msgs(e) == ALL_LINES, sent(e)
+    assert_all_from_timer(e)
+    assert_spaced(e)
+    # a lockdown that starts mid-report holds the rest; the retry finishes it in order
+    e = report_env(**ALL_CATS)
+    panel_click(e, ctrl=True)
+    for _ in range(100):
+        e.step()
+        if len(sent(e)) >= 2:
+            break
+    got = len(sent(e))
+    assert 2 <= got < len(ALL_LINES)
+    e.MOCK.chatLockdown = True
+    settle(e, 3)
+    assert len(sent(e)) == got
+    e.MOCK.chatLockdown = False
+    settle(e, 12)
+    assert sent_msgs(e) == ALL_LINES, sent(e)
+    assert_all_from_timer(e)
+    assert_spaced(e)
+
+
+def t_pg06_blocked_action_diagnostics():
+    e = report_env(run=3)
+    e.slash("debug")
+    assert any("Last blocked action: none" in m for m in e.chat()), e.chat()
+    panel_click(e, ctrl=True)
+    settle(e, 1)
+    assert len(sent(e)) == 2
+    e.fire("ADDON_ACTION_BLOCKED", "SomeOtherAddon", "SendChatMessage")
+    assert e.ns.lastBlocked is None
+    e.fire("ADDON_ACTION_BLOCKED", ADDON, "SendChatMessage")
+    lb = e.ns.lastBlocked
+    assert lb.func == "SendChatMessage" and lb.event == "ADDON_ACTION_BLOCKED", lb
+    assert lb.msg == "On foot: 3.00 mi", lb.msg
+
+    def refused():
+        return [m for m in e.chat() if "Guild chat refused that message (blocked by the game)." in m]
+
+    assert len(refused()) == 1, e.chat()
+    settle(e, 3)
+    assert len(sent(e)) == 2  # never re-sent
+    # a second block within 60 s prints nothing more
+    e.MOCK.time = e.MOCK.time + 11
+    panel_click(e, ctrl=True)
+    settle(e, 1)
+    assert len(sent(e)) == 4
+    e.fire("ADDON_ACTION_FORBIDDEN", ADDON, "SendChatMessage")
+    assert len(refused()) == 1, e.chat()
+    assert e.ns.lastBlocked.event == "ADDON_ACTION_FORBIDDEN"
+    # a block with no recent guild send is recorded but not attributed or printed
+    e.MOCK.time = e.MOCK.time + 100
+    e.fire("ADDON_ACTION_BLOCKED", ADDON, "Foo")
+    assert e.ns.lastBlocked.msg is None and len(refused()) == 1
+    e.slash("debug")
+    assert any("Last blocked action: Foo (ADDON_ACTION_BLOCKED), 0 s ago" in m for m in e.chat()), e.chat()
+
+
+def t_pg07_fallback_without_c_timer():
+    e = Env(setup=lambda e: setattr(e.G, "C_Timer", None))
+    e.ns.char["run"] = 3 * MI
+    e.ns.char["swim"] = 1 * MI
+    panel_click(e, ctrl=True)
+    settle(e)
+    assert len(sent(e)) == 3 and sent_msgs(e) == lines_of(e), sent(e)
+    assert_spaced(e)
 
 
 TESTS = [(n[2:], f) for n, f in sorted(globals().items()) if n.startswith("t_") and callable(f)]

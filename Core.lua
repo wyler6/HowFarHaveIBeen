@@ -16,6 +16,7 @@ local PREFIX = "|cff33ccffHowFar:|r"
 local CATEGORIES = { "walk", "run", "swim", "glide", "mount", "ghost" }
 
 local GUILD_RETRY_INTERVAL = 5     -- seconds between attempts to flush queued guild messages
+local GUILD_SEND_SPACING = 0.25   -- seconds between guild messages (each is sent from a C_Timer callback)
 local YARDS_PER_MILE = 1760
 local METERS_PER_YARD = 0.9144
 
@@ -407,19 +408,51 @@ local function chatLocked()
     return false
 end
 
-local function flushGuild()
+-- Guild chat goes out one message at a time, in order, each from a C_Timer
+-- callback, GUILD_SEND_SPACING apart (as Details does on Forever). Sending a
+-- whole report in one frame scrambled its order, and a milestone sent straight
+-- from the sampling OnUpdate was refused ("Interface action failed because of
+-- an AddOn"), while sends from a timer callback get through.
+-- Without C_Timer the frame's OnUpdate pumps one message per spacing instead.
+local lastGuildMsg, lastGuildAt   -- the last message handed to the game, and when
+local guildTimerPending = false
+
+local function hasTimer()
+    return C_Timer ~= nil and type(C_Timer.After) == "function"
+end
+
+local pumpGuild
+
+local function scheduleGuild(delay)
+    if guildTimerPending or not hasTimer() then return end
+    guildTimerPending = true
+    C_Timer.After(delay, function()
+        guildTimerPending = false
+        pumpGuild()
+    end)
+end
+
+pumpGuild = function()
     if #guildQueue == 0 or chatLocked() then return end
-    local queued = guildQueue
-    guildQueue = {}
     local send = (C_ChatInfo and C_ChatInfo.SendChatMessage) or SendChatMessage
-    if type(send) ~= "function" then return end -- nothing can send; drop rather than retry forever
-    for i = 1, #queued do pcall(send, queued[i], "GUILD") end
+    if type(send) ~= "function" then -- nothing can send; drop rather than retry forever
+        guildQueue = {}
+        return
+    end
+    local msg = table.remove(guildQueue, 1)
+    lastGuildMsg, lastGuildAt = msg, GetTime()
+    pcall(send, msg, "GUILD")
+    if #guildQueue > 0 then scheduleGuild(GUILD_SEND_SPACING) end
 end
 
 local function sendGuild(msg)
     if #guildQueue == 0 then guildAcc = 0 end
     guildQueue[#guildQueue + 1] = msg
-    flushGuild()
+    local delay = 0
+    if lastGuildAt then
+        delay = math.max(0, GUILD_SEND_SPACING - (GetTime() - lastGuildAt))
+    end
+    scheduleGuild(delay)
 end
 
 ------------------------------------------------------------------------
@@ -479,7 +512,7 @@ function ns.PostReport()
     if locked then
         ns.Print("Report will post to guild when combat ends.")
     else
-        ns.Print("Posted your distance report to guild chat.")
+        ns.Print("Posting your distance report to guild chat.")
     end
 end
 
@@ -757,6 +790,13 @@ local function printDebug()
     local my = ns.methodYards or {}
     ns.Print("This session: " .. ns.Format(my.position or 0, "yards") .. " by position, "
         .. ns.Format(my.speed or 0, "yards") .. " by speed estimate")
+    local lb = ns.lastBlocked
+    if lb then
+        ns.Print("Last blocked action: " .. lb.func .. " (" .. lb.event .. "), "
+            .. math.floor(GetTime() - lb.time + 0.5) .. " s ago")
+    else
+        ns.Print("Last blocked action: none")
+    end
 end
 
 local function handleSlash(msg)
@@ -870,8 +910,13 @@ frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 frame:RegisterEvent("PLAYER_REGEN_ENABLED")
+frame:RegisterEvent("ADDON_ACTION_BLOCKED")
+frame:RegisterEvent("ADDON_ACTION_FORBIDDEN")
 
-frame:SetScript("OnEvent", function(_, event, arg1)
+local BLOCKED_PRINT_INTERVAL = 60
+local lastBlockedPrint
+
+frame:SetScript("OnEvent", function(_, event, arg1, arg2)
     if event == "ADDON_LOADED" then
         if arg1 == addonName then initDB() end
     elseif event == "PLAYER_LOGIN" then
@@ -886,7 +931,19 @@ frame:SetScript("OnEvent", function(_, event, arg1)
         ns.ResetBaseline()
     elseif event == "PLAYER_REGEN_ENABLED" then
         flushPending()
-        flushGuild()
+        scheduleGuild(0)
+    elseif event == "ADDON_ACTION_BLOCKED" or event == "ADDON_ACTION_FORBIDDEN" then
+        if arg1 ~= addonName then return end
+        local now = GetTime()
+        local lb = { event = event, func = usable(arg2) and tostring(arg2) or "?", time = now }
+        ns.lastBlocked = lb
+        if lastGuildAt and now - lastGuildAt <= 1 then
+            lb.msg = lastGuildMsg
+            if not lastBlockedPrint or now - lastBlockedPrint >= BLOCKED_PRINT_INTERVAL then
+                lastBlockedPrint = now
+                ns.Print("Guild chat refused that message (blocked by the game).")
+            end
+        end
     end
 end)
 
@@ -896,8 +953,13 @@ frame:SetScript("OnUpdate", function(_, elapsed)
         guildAcc = guildAcc + elapsed
         if guildAcc >= GUILD_RETRY_INTERVAL then
             guildAcc = 0
-            flushGuild()
+            scheduleGuild(0)
         end
+    end
+    -- No C_Timer: pump one queued message per spacing from here.
+    if #guildQueue > 0 and not hasTimer()
+        and (not lastGuildAt or GetTime() - lastGuildAt >= GUILD_SEND_SPACING - 1e-9) then
+        pumpGuild()
     end
     acc = acc + elapsed
     if acc < SAMPLE_INTERVAL then return end

@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **Report lines arrive in order.** Guild chat is now sent one message at a time, 0.25 s apart, so the lines
+  of a distance report no longer arrive scrambled.
+- **Fixed milestone guild messages being blocked by the game** ("Interface action failed because of an
+  AddOn"). Guild chat is now sent from a timer, as the Details addon does.
+- `/howfar debug` shows the last action the game blocked.
+
 ## 1.5.0
 
 - **Distance report.** Ctrl+click the panel (or type `/howfar report`) to post your distances to guild chat,
