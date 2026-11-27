@@ -146,6 +146,7 @@ function ns.UI_Init()
             and type(IsControlKeyDown) == "function" and IsControlKeyDown() then
             ns.PostReport()
         end
+        if ns.GuildHardwareEvent then ns.GuildHardwareEvent() end
     end)
     panel:SetScript("OnEnter", function(self) showTooltip(self) end)
     panel:SetScript("OnLeave", function() GameTooltip:Hide() end)

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Guild messages the game blocks are no longer lost.** On guilds whose chat is linked to Discord, the game only
+  accepts addon guild messages on a key press; the addon then posts on your next key press (or a click on
+  the panel, up to 3 tries) and remembers this per character and guild. Otherwise it posts immediately.
+
 ## 1.5.1
 
 - **Report lines arrive in order.** Guild chat is now sent one message at a time, 0.25 s apart, so the lines

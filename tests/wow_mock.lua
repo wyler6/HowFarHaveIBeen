@@ -26,6 +26,15 @@ MOCK = {
   inTimer = false,          -- true while a C_Timer callback runs
   timers = {},              -- pending C_Timer.After entries {at=, fn=, seq=}
   timerSeq = 0,
+  hardware = false,         -- true while a simulated hardware event (key press / click) runs
+  guildNeedsHardware = false, -- simulated restriction: timer sends are blocked
+  blockAll = false,         -- simulated restriction: every send is blocked
+  blockDeferred = false,    -- deliver ADDON_ACTION_BLOCKED at the next TickFrames
+  blockedSends = {},        -- {msg=, chatType=, time=} per blocked send
+  pendingBlocks = {},
+  guildName = "Test Guild", -- GetGuildInfo("player") first return; nil = not in a guild
+  propagateFails = false,   -- GetPropagateKeyboardInput returns false
+  keyLog = {},              -- "prop" / "show" per SetPropagateKeyboardInput / Show on keyboard frames
 }
 
 -- Secret value sentinel: any arithmetic/comparison/concat/length use throws.
@@ -56,7 +65,17 @@ function frameMethods.GetScript(self, name) return self._scripts[name] end
 function frameMethods.RegisterEvent(self, ev) self._events[ev] = true end
 function frameMethods.UnregisterEvent(self, ev) self._events[ev] = nil end
 -- Show/Hide fire OnShow/OnHide on a real state change, like the game does.
+function frameMethods.EnableKeyboard(self, v) self._keyboard = v and true or false end
+function frameMethods.SetPropagateKeyboardInput(self, v)
+  self._propagate = v and true or false
+  if self._scripts.OnKeyDown then MOCK.keyLog[#MOCK.keyLog + 1] = "prop" end
+end
+function frameMethods.GetPropagateKeyboardInput(self)
+  if MOCK.propagateFails then return false end
+  return self._propagate or false
+end
 function frameMethods.Show(self)
+  if self._scripts.OnKeyDown then MOCK.keyLog[#MOCK.keyLog + 1] = "show" end
   local was = self._shown
   self._shown = true
   if not was and self._scripts.OnShow then self._scripts.OnShow(self) end
@@ -179,6 +198,7 @@ function IsFlying() return MOCK.flying end
 function IsFalling() return MOCK.falling end
 function UnitRace() return MOCK.race[1], MOCK.race[2], MOCK.race[3] end
 function IsInGuild() return MOCK.inGuild end
+function GetGuildInfo() return MOCK.guildName end
 function IsControlKeyDown() return MOCK.ctrl end
 
 SOUNDKIT = { LEVEL_UP = 888 }
@@ -186,7 +206,17 @@ function PlaySound(id, channel) MOCK.sounds[#MOCK.sounds + 1] = { id = id, chann
 
 C_ChatInfo = {
   SendChatMessage = function(msg, chatType)
-    MOCK.sent[#MOCK.sent + 1] = { msg = msg, chatType = chatType, time = MOCK.time, fromTimer = MOCK.inTimer and true or false }
+    if MOCK.blockAll or (MOCK.guildNeedsHardware and not MOCK.hardware) then
+      MOCK.blockedSends[#MOCK.blockedSends + 1] = { msg = msg, chatType = chatType, time = MOCK.time }
+      if MOCK.blockDeferred then
+        MOCK.pendingBlocks[#MOCK.pendingBlocks + 1] = true
+      else
+        FireEvent("ADDON_ACTION_BLOCKED", "HowFarHaveIBeen", "UNKNOWN()")
+      end
+      return
+    end
+    MOCK.sent[#MOCK.sent + 1] = { msg = msg, chatType = chatType, time = MOCK.time,
+      fromTimer = MOCK.inTimer and true or false, hardware = MOCK.hardware }
   end,
   InChatMessagingLockdown = function() return MOCK.chatLockdown end,
 }
@@ -227,6 +257,19 @@ C_Map = {
   end,
 }
 
+-- Test helper: a key press is a hardware event delivered (OnKeyDown) to every
+-- shown, keyboard-enabled frame. The argument is ignored.
+function PressKey()
+  MOCK.hardware = true
+  local ok, err = pcall(function()
+    for _, f in ipairs(MOCK.frames) do
+      if f._keyboard and f._shown and f._scripts.OnKeyDown then f._scripts.OnKeyDown(f, "W") end
+    end
+  end)
+  MOCK.hardware = false
+  if not ok then error(err, 0) end
+end
+
 -- Test helpers -------------------------------------------------------------
 -- Honour MOCK.unitPositionExists (UnitPosition is a global that may be absent).
 function Sync()
@@ -243,6 +286,9 @@ end
 -- Run every frame's OnUpdate once with the given elapsed time.
 function TickFrames(elapsed)
   Sync()
+  local pending = MOCK.pendingBlocks
+  MOCK.pendingBlocks = {}
+  for _ = 1, #pending do FireEvent("ADDON_ACTION_BLOCKED", "HowFarHaveIBeen", "UNKNOWN()") end
   for _, f in ipairs(MOCK.frames) do
     if f._scripts.OnUpdate then f._scripts.OnUpdate(f, elapsed) end
   end

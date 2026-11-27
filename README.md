@@ -25,7 +25,7 @@ Install it from CurseForge, or copy the addon files (`HowFarHaveIBeen.toc` and t
 | `report` | Post this character's distances to guild chat, each on its own line (same as Ctrl+click on the panel; 10 s cooldown) |
 | `options` / `config` | Open or close the options window |
 | `reset` / `reset confirm` | Erase this character's totals (needs `confirm`) |
-| `debug` | Show which position/speed APIs work right now, the last measuring method and the last action the game blocked |
+| `debug` | Show which position/speed APIs work right now, the last measuring method, the last action the game blocked and the guild chat mode |
 | `help` | List commands |
 
 The panel: left-drag to move (unless locked), right-click to open the options window, Ctrl+click to post your distances to guild chat. Hover for the full breakdown.
@@ -54,7 +54,7 @@ Whenever this character's on-foot distance (walked + ran) crosses a multiple of 
 
 The default is every 5 miles. Choose **progressive** (`/howfar milestone progressive` or the Options window) to get milestones every 1 up to 5, then 10, 20 ... 100, then every 100 up to 1000, and so on; switching modes never fires a milestone retroactively. Swimming, gliding (Skyborne), riding and ghost distance never trigger a milestone, and loading your saved
 data never does either. Guild chat is not sent during combat or while chat messaging is locked down; the message is
-queued and sent once, when combat ends or the lockdown lifts (retried every 5 s). Guild messages are sent one at a time, 0.25 s apart, from a timer. `/howfar milestone test` plays the
+queued and sent once, when combat ends or the lockdown lifts (retried every 5 s). Guild messages are sent one at a time, 0.25 s apart, from a timer. On guilds whose chat is linked to Discord, the game only accepts addon guild messages on a key press, so the addon then posts on your next key press (or a click on the panel) and remembers this per character and guild; otherwise it posts immediately. `/howfar milestone test` plays the
 sound and prints the local line but never posts to guild.
 
 ## How it measures

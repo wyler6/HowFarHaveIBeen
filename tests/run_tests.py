@@ -58,7 +58,7 @@ class Env:
         if setup:
             setup(self)
         if db is not None:
-            self.G.HowFarHaveIBeenDB = db
+            self.G.HowFarHaveIBeenDB = self._adopt(db)
         self.ns = L.table()
         loader = L.eval("function(path, name, ns) local f = assert(loadfile(path)); f(name, ns) end")
         for fname in LUA_FILES:
@@ -69,6 +69,15 @@ class Env:
             self.fire("PLAYER_ENTERING_WORLD")
 
     # -- helpers ---------------------------------------------------------
+    def _adopt(self, v):
+        """Deep-copy a Lua table from another runtime (a saved-variables reload)."""
+        if lupa_rt.lua_type(v) == "table":
+            t = self.L.table()
+            for k in v.keys():
+                t[k] = self._adopt(v[k])
+            return t
+        return v
+
     def tbl(self, **kw):
         return self.L.table_from(kw)
 
@@ -1694,8 +1703,12 @@ def t_rp07_long_name_header():
 def panel_click(e, button="LeftButton", ctrl=False):
     panel = e.G.HowFarHaveIBeenFrame
     e.MOCK.ctrl = ctrl
-    panel._scripts.OnMouseDown(panel, button)
-    panel._scripts.OnMouseUp(panel, button)
+    e.MOCK.hardware = True
+    try:
+        panel._scripts.OnMouseDown(panel, button)
+        panel._scripts.OnMouseUp(panel, button)
+    finally:
+        e.MOCK.hardware = False
 
 
 def t_rp08_ctrl_click_posts_once():
@@ -1923,24 +1936,22 @@ def t_pg06_blocked_action_diagnostics():
     assert lb.func == "SendChatMessage" and lb.event == "ADDON_ACTION_BLOCKED", lb
     assert lb.msg == "On foot: 3.00 mi", lb.msg
 
-    def refused():
-        return [m for m in e.chat() if "Guild chat refused that message (blocked by the game)." in m]
+    def held():
+        return [m for m in e.chat() if "it will post on your next key press" in m]
 
-    assert len(refused()) == 1, e.chat()
+    assert not any("refused that message" in m for m in e.chat()), e.chat()
+    assert len(held()) == 1, e.chat()
     settle(e, 3)
-    assert len(sent(e)) == 2  # never re-sent
-    # a second block within 60 s prints nothing more
-    e.MOCK.time = e.MOCK.time + 11
-    panel_click(e, ctrl=True)
-    settle(e, 1)
-    assert len(sent(e)) == 4
+    assert len(sent(e)) == 2  # held: timers never re-send it
+    e.G.PressKey("MoveForwardStart")  # ...a key press does
+    assert sent_msgs(e)[2:] == ["On foot: 3.00 mi"], sent(e)
     e.fire("ADDON_ACTION_FORBIDDEN", ADDON, "SendChatMessage")
-    assert len(refused()) == 1, e.chat()
+    assert len(held()) == 1, e.chat()  # printed once per session
     assert e.ns.lastBlocked.event == "ADDON_ACTION_FORBIDDEN"
-    # a block with no recent guild send is recorded but not attributed or printed
+    # a block with no recent guild send is recorded but not attributed
     e.MOCK.time = e.MOCK.time + 100
     e.fire("ADDON_ACTION_BLOCKED", ADDON, "Foo")
-    assert e.ns.lastBlocked.msg is None and len(refused()) == 1
+    assert e.ns.lastBlocked.msg is None and len(held()) == 1
     e.slash("debug")
     assert any("Last blocked action: Foo (ADDON_ACTION_BLOCKED), 0 s ago" in m for m in e.chat()), e.chat()
 
@@ -1953,6 +1964,292 @@ def t_pg07_fallback_without_c_timer():
     settle(e)
     assert len(sent(e)) == 3 and sent_msgs(e) == lines_of(e), sent(e)
     assert_spaced(e)
+
+
+# ---------------------------------------------------------------- hardware mode
+HELD_TEXT = "it will post on your next key press"
+
+
+def count_chat(e, text):
+    return len([m for m in e.chat() if text in m])
+
+
+def blocked_env(setup=None):
+    """A milestone env where timer sends are blocked; the 5-mile message is held."""
+    e = Env(setup=setup)
+    e.ns.char["run"] = FIVE_MI - 10
+    e.MOCK.guildNeedsHardware = True
+    e.run_line(3, 7)
+    e.MOCK.speed = 0
+    return e
+
+
+def press(e, wait=0.3):
+    e.MOCK.time = e.MOCK.time + wait
+    e.G.PressKey()
+
+
+def key_listener(e):
+    """The hidden keyboard frame (the only one with an OnKeyDown script)."""
+    found = [e.MOCK.frames[i] for i in range(1, len(e.MOCK.frames) + 1)
+             if e.MOCK.frames[i]._scripts.OnKeyDown]
+    assert len(found) == 1, found
+    f = found[0]
+    assert f._keyboard
+    return f
+
+
+def key_log(e):
+    return [e.MOCK.keyLog[i] for i in range(1, len(e.MOCK.keyLog) + 1)]
+
+
+def t_hw01_blocked_timer_send_waits_for_key():
+    e = blocked_env()
+    assert len(e.MOCK.sent) == 0 and len(e.MOCK.blockedSends) == 1
+    assert count_chat(e, HELD_TEXT) == 1, e.chat()
+    assert not any("Guild chat blocked that message" in m for m in e.chat())
+    assert key_listener(e)._shown is True
+    settle(e, 8)
+    assert len(e.MOCK.sent) == 0 and len(e.MOCK.blockedSends) == 1
+    e.G.PressKey()
+    assert len(sent(e)) == 1 and "5 miles" in sent(e)[0][0], sent(e)
+    assert e.MOCK.sent[1].hardware is True
+    assert key_listener(e)._shown is False
+    press(e)
+    press(e)
+    assert len(sent(e)) == 1 and len(e.MOCK.blockedSends) == 1
+    assert count_chat(e, HELD_TEXT) == 1
+
+
+def t_hw02_blocked_event_deferred():
+    e = Env()
+    e.ns.char["run"] = FIVE_MI - 10
+    e.MOCK.blockDeferred = True
+    e.MOCK.guildNeedsHardware = True
+    e.run_line(3, 7)
+    e.MOCK.speed = 0
+    settle(e, 1)
+    assert len(e.MOCK.sent) == 0 and len(e.MOCK.blockedSends) == 1
+    assert count_chat(e, HELD_TEXT) == 1, e.chat()
+    assert key_listener(e)._shown is True
+    settle(e, 5)
+    assert len(e.MOCK.sent) == 0 and len(e.MOCK.blockedSends) == 1
+    e.G.PressKey()
+    assert len(sent(e)) == 1 and e.MOCK.sent[1].hardware is True
+    assert key_listener(e)._shown is False
+    press(e)
+    assert len(sent(e)) == 1
+
+
+def t_hw03_ctrl_click_then_one_line_per_key_press():
+    e = blocked_env()
+    e.G.PressKey()
+    assert len(sent(e)) == 1
+    for k, v in ALL_CATS.items():
+        e.ns.char[k] = v * MI
+    e.MOCK.time = e.MOCK.time + 20
+    panel_click(e, ctrl=True)
+    lines = lines_of(e)
+    assert sent_msgs(e)[1:] == lines[:1], sent(e)
+    assert e.MOCK.sent[2].hardware is True
+    assert key_listener(e)._shown is True  # the rest of the report waits
+    settle(e, 3)
+    assert len(sent(e)) == 2  # timers send nothing in key mode
+    for i in range(1, len(lines)):
+        press(e)
+        assert sent_msgs(e)[1:] == lines[:i + 1], sent(e)
+        e.G.PressKey()  # same instant: nothing more
+        assert len(sent(e)) == 2 + i
+    assert sent_msgs(e)[1:] == lines
+    assert key_listener(e)._shown is False
+    ent = sent_entries(e)
+    for a, b in zip(ent, ent[1:]):
+        assert b.time - a.time >= 0.25 - 1e-9
+
+
+def t_hw04_dropped_after_three_attempts():
+    e = Env()
+    e.ns.char["run"] = FIVE_MI - 10
+    e.MOCK.blockAll = True
+    e.run_line(3, 7)
+    e.MOCK.speed = 0
+    for _ in range(6):
+        press(e)
+    assert len(e.MOCK.blockedSends) == 3, len(e.MOCK.blockedSends)
+    assert len(e.MOCK.sent) == 0
+    assert count_chat(e, "Couldn't post to guild chat: ") == 1, e.chat()
+    assert count_chat(e, "5 miles") >= 1
+    assert key_listener(e)._shown is False
+    for _ in range(3):
+        press(e)
+    settle(e, 8)
+    assert len(e.MOCK.blockedSends) == 3 and count_chat(e, "Couldn't post") == 1
+
+
+def t_hw05_combat_hides_listener_and_holds():
+    e = blocked_env()
+    f = key_listener(e)
+    assert f._shown is True
+    # Real client order: PLAYER_REGEN_DISABLED fires BEFORE InCombatLockdown()
+    # turns true, so the listener must hide on the event itself.
+    e.fire("PLAYER_REGEN_DISABLED")
+    assert f._shown is False
+    e.MOCK.inCombat = True
+    press(e)
+    assert len(e.MOCK.sent) == 0
+    e.ns.PostReport()  # queueing more mid-combat must not bring it back
+    assert f._shown is False
+    e.MOCK.inCombat = False
+    e.fire("PLAYER_REGEN_ENABLED")
+    assert f._shown is True
+    press(e)
+    assert len(sent(e)) == 1 and e.MOCK.sent[1].hardware is True
+    assert "5 miles" in sent(e)[0][0], sent(e)
+    lines = lines_of(e)
+    for _ in range(len(lines)):
+        assert f._shown is True  # report lines still waiting
+        press(e)
+    assert sent_msgs(e)[1:] == lines, sent(e)
+    assert f._shown is False
+
+
+def t_hw06_key_press_with_nothing_waiting():
+    e = Env()
+    f = key_listener(e)
+    assert f._shown is False
+    e.G.PressKey()
+    assert len(e.MOCK.sent) == 0 and len(e.MOCK.blockedSends) == 0
+    assert f._shown is False
+    # key mode active but the queue is empty: still hidden, nothing sent
+    e = blocked_env()
+    press(e)
+    assert len(sent(e)) == 1
+    e.G.PressKey()
+    assert len(sent(e)) == 1 and key_listener(e)._shown is False
+
+
+def t_hw07_propagate_set_before_every_show():
+    e = blocked_env()
+    for k, v in ALL_CATS.items():
+        e.ns.char[k] = v * MI
+    e.MOCK.time = e.MOCK.time + 20
+    panel_click(e, ctrl=True)
+    for _ in range(10):
+        press(e)
+    e.MOCK.inCombat = True
+    e.fire("PLAYER_REGEN_DISABLED")
+    e.MOCK.inCombat = False
+    e.fire("PLAYER_REGEN_ENABLED")
+    log = key_log(e)
+    assert log.count("show") >= 1, log
+    for i, v in enumerate(log):
+        if v == "show":
+            assert i > 0 and log[i - 1] == "prop", log
+
+
+def t_hw07b_propagate_failure_uses_panel_click():
+    def setup(e):
+        e.MOCK.propagateFails = True
+
+    e = blocked_env(setup)
+    f = key_listener(e)
+    assert "show" not in key_log(e)
+    assert f._shown is False
+    e.G.PressKey()
+    assert len(e.MOCK.sent) == 0
+    e.slash("debug")
+    assert any("Guild chat: waits for a panel click (key listener unavailable)" in m
+               and "1 waiting" in m for m in e.chat()), e.chat()
+    panel_click(e)
+    assert len(sent(e)) == 1 and e.MOCK.sent[1].hardware is True
+    assert "show" not in key_log(e)
+
+
+def t_hw08_debug_shows_guild_mode():
+    e = Env()
+    e.slash("debug")
+    assert any("Guild chat: sent from a timer" in m for m in e.chat()), e.chat()
+    e = blocked_env()
+    e.slash("debug")
+    assert any("Guild chat: waits for a key press (this guild blocked a timer send)" in m
+               and "1 waiting" in m for m in e.chat()), e.chat()
+    e.G.PressKey()
+    e.slash("debug")
+    assert any(m.endswith("(this guild blocked a timer send)") for m in e.chat()), e.chat()
+
+
+def t_hw09_duplicate_block_event_queues_once():
+    e = blocked_env()
+    e.fire("ADDON_ACTION_BLOCKED", ADDON, "UNKNOWN()")
+    e.fire("ADDON_ACTION_FORBIDDEN", ADDON, "UNKNOWN()")
+    press(e)
+    press(e)
+    press(e)
+    assert len(sent(e)) == 1, sent(e)
+    assert count_chat(e, HELD_TEXT) == 1
+
+
+def t_hw10_key_mode_persists_per_character_and_guild():
+    e = blocked_env()
+    assert e.ns.char.guildKeyMode == e.MOCK.guildName == "Test Guild"
+    db = e.G.HowFarHaveIBeenDB
+    e2 = Env(db=db)
+    e2.ns.char["run"] = FIVE_MI - 10
+    e2.MOCK.guildNeedsHardware = True
+    e2.run_line(3, 7)
+    e2.MOCK.speed = 0
+    settle(e2, 5)
+    assert len(e2.MOCK.blockedSends) == 0, "no timer attempt, so no block warning"
+    assert len(e2.MOCK.sent) == 0
+    assert count_chat(e2, HELD_TEXT) == 1
+    assert key_listener(e2)._shown is True
+    e2.G.PressKey()
+    assert len(sent(e2)) == 1 and "5 miles" in sent(e2)[0][0]
+    assert e2.MOCK.sent[1].hardware is True and e2.MOCK.sent[1].fromTimer is False
+    assert len(e2.MOCK.blockedSends) == 0
+    assert key_listener(e2)._shown is False
+    e2.slash("debug")
+    assert any("Guild chat: waits for a key press" in m for m in e2.chat()), e2.chat()
+
+
+def t_hw11_other_guild_uses_timer_again():
+    e = blocked_env()
+    db = e.G.HowFarHaveIBeenDB
+
+    def setup(e2):
+        e2.MOCK.guildName = "Other Guild"
+
+    e2 = Env(db=db, setup=setup)
+    e2.ns.char["run"] = FIVE_MI - 10
+    e2.run_line(3, 7)
+    e2.MOCK.speed = 0
+    settle(e2, 2)
+    assert len(e2.MOCK.sent) == 1 and e2.MOCK.sent[1].fromTimer is True
+    assert e2.ns.char.guildKeyMode is None
+    assert key_listener(e2)._shown is False
+    e2.slash("debug")
+    assert any("Guild chat: sent from a timer" in m for m in e2.chat()), e2.chat()
+
+
+def t_hw12_sync_block_attributed_without_time_window():
+    def setup(e):
+        e.L.execute("local o = C_ChatInfo.SendChatMessage; "
+                    "C_ChatInfo.SendChatMessage = function(...) MOCK.time = MOCK.time + 5; return o(...) end")
+
+    e = blocked_env(setup)
+    assert len(e.MOCK.blockedSends) == 1 and len(e.MOCK.sent) == 0
+    assert count_chat(e, HELD_TEXT) == 1, e.chat()
+    assert e.ns.lastBlocked.msg is not None
+    e.slash("debug")
+    assert any("1 waiting" in m for m in e.chat()), e.chat()
+    e.G.PressKey()
+    assert len(sent(e)) == 1 and e.MOCK.sent[1].hardware is True
+
+
+def t_hw13_no_hooksecurefunc_in_addon():
+    for fname in ("Core.lua", "UI.lua", "Options.lua"):
+        src = open(os.path.join(ADDON_DIR, fname), encoding="utf-8").read()
+        assert "hooksecurefunc" not in src, fname
 
 
 TESTS = [(n[2:], f) for n, f in sorted(globals().items()) if n.startswith("t_") and callable(f)]

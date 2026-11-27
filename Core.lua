@@ -414,11 +414,71 @@ end
 -- from the sampling OnUpdate was refused ("Interface action failed because of
 -- an AddOn"), while sends from a timer callback get through.
 -- Without C_Timer the frame's OnUpdate pumps one message per spacing instead.
-local lastGuildMsg, lastGuildAt   -- the last message handed to the game, and when
+local lastGuildMsg, lastGuildAt   -- the last entry handed to the game, and when
 local guildTimerPending = false
+-- Set when the game blocked a send made from a timer: from then on queued
+-- messages are sent one per hardware event (key press, panel click). The same
+-- mode is remembered per character and guild in ns.char.guildKeyMode, so later
+-- sessions skip the timer (and the game's block warning) altogether.
+local guildNeedsHardware = false
+local guildHardwareNotified = false
+local keyListener              -- hidden keyboard frame, created at PLAYER_LOGIN
+local keyRouteUnavailable = false
+local inCombat = false         -- PLAYER_REGEN_DISABLED fires before InCombatLockdown() turns true
+local sendingEntry             -- the entry being handed to the game right now
+local GUILD_MAX_ATTEMPTS = 3
 
 local function hasTimer()
     return C_Timer ~= nil and type(C_Timer.After) == "function"
+end
+
+local function currentGuildName()
+    if type(GetGuildInfo) ~= "function" then return nil end
+    local ok, name = pcall(GetGuildInfo, "player")
+    if ok and usable(name) and type(name) == "string" and name ~= "" then return name end
+    return nil
+end
+
+-- True when guild messages must go out on a hardware event. Evaluated at send
+-- time because guild info can load late after login.
+local function keyModeActive()
+    if guildNeedsHardware then return true end
+    local c = ns.char
+    local stored = c and c.guildKeyMode
+    if stored == nil then return false end
+    local g = currentGuildName()
+    if type(stored) == "string" and g and g == stored then return true end
+    if g then c.guildKeyMode = nil end -- other guild (or junk): back to timer mode
+    return false
+end
+
+-- The key listener is shown ONLY while a message waits for a key press, and
+-- never in combat, so it can never swallow input. It must propagate keys.
+local function keyListenerCanPropagate(f)
+    pcall(f.SetPropagateKeyboardInput, f, true)
+    if type(f.GetPropagateKeyboardInput) == "function" then
+        local ok, v = pcall(f.GetPropagateKeyboardInput, f)
+        if not ok or v ~= true then return false end
+    end
+    return true
+end
+
+local function updateKeyListener()
+    local f = keyListener
+    if not f then return end
+    local want = not keyRouteUnavailable and #guildQueue > 0 and not inCombat
+        and not (InCombatLockdown and InCombatLockdown()) and keyModeActive()
+    if want then
+        if not f:IsShown() then
+            if not keyListenerCanPropagate(f) then
+                keyRouteUnavailable = true
+                return
+            end
+            f:Show()
+        end
+    elseif f:IsShown() then
+        f:Hide()
+    end
 end
 
 local pumpGuild
@@ -428,31 +488,62 @@ local function scheduleGuild(delay)
     guildTimerPending = true
     C_Timer.After(delay, function()
         guildTimerPending = false
-        pumpGuild()
+        pumpGuild(false)
     end)
 end
 
-pumpGuild = function()
+local function noteHeldForKey()
+    if guildHardwareNotified then return end
+    guildHardwareNotified = true
+    ns.Print("Your guild's chat only accepts addon messages on a key press (it's linked to Discord); it will post on your next key press.")
+end
+
+pumpGuild = function(fromHardware)
     if #guildQueue == 0 or chatLocked() then return end
+    if keyModeActive() and not fromHardware then
+        noteHeldForKey()
+        updateKeyListener()
+        return
+    end
+    if fromHardware and lastGuildAt
+        and GetTime() - lastGuildAt < GUILD_SEND_SPACING - 1e-9 then return end
     local send = (C_ChatInfo and C_ChatInfo.SendChatMessage) or SendChatMessage
     if type(send) ~= "function" then -- nothing can send; drop rather than retry forever
         guildQueue = {}
+        updateKeyListener()
         return
     end
-    local msg = table.remove(guildQueue, 1)
-    lastGuildMsg, lastGuildAt = msg, GetTime()
-    pcall(send, msg, "GUILD")
-    if #guildQueue > 0 then scheduleGuild(GUILD_SEND_SPACING) end
+    local entry = table.remove(guildQueue, 1)
+    entry.attempts = entry.attempts + 1
+    lastGuildMsg, lastGuildAt = entry, GetTime()
+    sendingEntry = entry
+    pcall(send, entry.text, "GUILD")
+    sendingEntry = nil
+    -- A block may have arrived synchronously and put the entry back; then key
+    -- mode is on and no timer send follows.
+    if not fromHardware and #guildQueue > 0 and not keyModeActive() then
+        scheduleGuild(GUILD_SEND_SPACING)
+    end
+    updateKeyListener()
+end
+
+-- Called from hardware events (key presses on the key listener, panel clicks).
+function ns.GuildHardwareEvent()
+    if keyModeActive() then
+        pcall(pumpGuild, true)
+    end
+    updateKeyListener()
 end
 
 local function sendGuild(msg)
     if #guildQueue == 0 then guildAcc = 0 end
-    guildQueue[#guildQueue + 1] = msg
+    guildQueue[#guildQueue + 1] = { text = msg, attempts = 0 }
     local delay = 0
     if lastGuildAt then
         delay = math.max(0, GUILD_SEND_SPACING - (GetTime() - lastGuildAt))
     end
     scheduleGuild(delay)
+    updateKeyListener()
 end
 
 ------------------------------------------------------------------------
@@ -797,6 +888,10 @@ local function printDebug()
     else
         ns.Print("Last blocked action: none")
     end
+    ns.Print((keyRouteUnavailable and "Guild chat: waits for a panel click (key listener unavailable)"
+        or keyModeActive() and "Guild chat: waits for a key press (this guild blocked a timer send)"
+        or "Guild chat: sent from a timer")
+        .. ((#guildQueue > 0) and (" - " .. #guildQueue .. " waiting") or ""))
 end
 
 local function handleSlash(msg)
@@ -910,11 +1005,20 @@ frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 frame:RegisterEvent("PLAYER_REGEN_ENABLED")
+frame:RegisterEvent("PLAYER_REGEN_DISABLED")
 frame:RegisterEvent("ADDON_ACTION_BLOCKED")
 frame:RegisterEvent("ADDON_ACTION_FORBIDDEN")
 
-local BLOCKED_PRINT_INTERVAL = 60
-local lastBlockedPrint
+-- Hidden keyboard frame: a key press (OnKeyDown) is a hardware event, so guild
+-- chat the game blocks from a timer is sent from it. Shown only while a message
+-- waits (see updateKeyListener); it always propagates keys.
+local function createKeyListener()
+    local f = CreateFrame("Frame", nil, UIParent)
+    f:Hide()
+    f:EnableKeyboard(true)
+    f:SetScript("OnKeyDown", function() ns.GuildHardwareEvent() end)
+    keyListener = f
+end
 
 frame:SetScript("OnEvent", function(_, event, arg1, arg2)
     if event == "ADDON_LOADED" then
@@ -927,21 +1031,40 @@ frame:SetScript("OnEvent", function(_, event, arg1, arg2)
         ns.ResetBaseline()
         uiCall("UI_Init")
         uiCall("Options_Init") -- Settings entry: must not be registered at file load
+        createKeyListener()
     elseif event == "PLAYER_ENTERING_WORLD" then
         ns.ResetBaseline()
     elseif event == "PLAYER_REGEN_ENABLED" then
+        inCombat = false
         flushPending()
         scheduleGuild(0)
+        updateKeyListener()
+    elseif event == "PLAYER_REGEN_DISABLED" then
+        inCombat = true
+        updateKeyListener()
     elseif event == "ADDON_ACTION_BLOCKED" or event == "ADDON_ACTION_FORBIDDEN" then
         if arg1 ~= addonName then return end
         local now = GetTime()
         local lb = { event = event, func = usable(arg2) and tostring(arg2) or "?", time = now }
         ns.lastBlocked = lb
-        if lastGuildAt and now - lastGuildAt <= 1 then
-            lb.msg = lastGuildMsg
-            if not lastBlockedPrint or now - lastBlockedPrint >= BLOCKED_PRINT_INTERVAL then
-                lastBlockedPrint = now
-                ns.Print("Guild chat refused that message (blocked by the game).")
+        local entry = sendingEntry
+        if not entry and lastGuildMsg and lastGuildAt and now - lastGuildAt <= 1 then
+            entry = lastGuildMsg
+        end
+        if entry then
+            lb.msg = entry.text
+            if entry.handledAttempt ~= entry.attempts then
+                entry.handledAttempt = entry.attempts
+                if entry.attempts < GUILD_MAX_ATTEMPTS then
+                    table.insert(guildQueue, 1, entry)
+                    guildNeedsHardware = true
+                    local g = currentGuildName()
+                    if g and ns.char then ns.char.guildKeyMode = g end
+                    noteHeldForKey()
+                else
+                    ns.Print("Couldn't post to guild chat: " .. tostring(entry.text))
+                end
+                updateKeyListener()
             end
         end
     end
@@ -959,7 +1082,7 @@ frame:SetScript("OnUpdate", function(_, elapsed)
     -- No C_Timer: pump one queued message per spacing from here.
     if #guildQueue > 0 and not hasTimer()
         and (not lastGuildAt or GetTime() - lastGuildAt >= GUILD_SEND_SPACING - 1e-9) then
-        pumpGuild()
+        pumpGuild(false)
     end
     acc = acc + elapsed
     if acc < SAMPLE_INTERVAL then return end
