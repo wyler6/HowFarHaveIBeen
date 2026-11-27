@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.5.2
 
 - **Guild messages the game blocks are no longer lost.** On guilds whose chat is linked to Discord, the game only
   accepts addon guild messages on a key press; the addon then posts on your next key press (or a click on
